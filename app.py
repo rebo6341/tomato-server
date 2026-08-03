@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify, render_template
+from flask import Flask, request, jsonify, render_template, send_from_directory
 import sqlite3
 
 app = Flask(__name__, static_folder='static', template_folder='templates')
@@ -82,3 +82,12 @@ def history():
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)
+
+# iOS (Safari) 対応
+@app.route('/apple-touch-icon.png')
+@app.route('/apple-touch-icon-precomposed.png')
+@app.route('/apple-touch-icon-120x120.png')
+@app.route('/apple-touch-icon-120x120-precomposed.png')
+@app.route('/favicon.ico')
+def serve_apple_icon():
+    return send_from_directory('static', 'icon.png', mimetype='image/png')

@@ -1,24 +1,35 @@
-const CACHE_NAME = 'tomato-pwa-v1';
-const urlsToCache = [
+// キャッシュ名を更新（例: v1 -> v2）
+const CACHE_NAME = 'tomato-app-v2';
+
+const FILES_TO_CACHE = [
   '/',
-  '/manifest.json',
-  '/api/data'
+  '/static/css/style.css',
+  '/static/js/app.js',
+  '/static/icon.png',
+  '/static/manifest.json'
 ];
 
-self.addEventListener('install', event => {
+// installイベントで旧キャッシュを無視して最新を取得
+self.addEventListener('install', (event) => {
+  self.skipWaiting();
   event.waitUntil(
-    caches.open(CACHE_NAME)
-      .then(cache => {
-        return cache.addAll(urlsToCache);
-      })
+    caches.open(CACHE_NAME).then((cache) => {
+      return cache.addAll(FILES_TO_CACHE);
+    })
   );
 });
 
-self.addEventListener('fetch', event => {
-  event.respondWith(
-    caches.match(event.request)
-      .then(response => {
-        return response || fetch(event.request);
-      })
+self.addEventListener('activate', (event) => {
+  event.waitUntil(
+    caches.keys().then((keyList) => {
+      return Promise.all(
+        keyList.map((key) => {
+          if (key !== CACHE_NAME) {
+            return caches.delete(key); // 古いキャッシュを全削除
+          }
+        })
+      );
+    })
   );
+  return self.clients.claim();
 });
