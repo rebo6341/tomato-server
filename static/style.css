@@ -1,0 +1,183 @@
+:root {
+    --bg-color: #121212;
+    --card-bg-color: #1e1e1e;
+    --item-bg-color: #2a2a2a;
+    --primary-color: #4CAF50;
+    --text-color: #e0e0e0;
+    --sub-text-color: #a0a0a0;
+    --border-color: #333333;
+    --online-color: #2ecc71;
+    --offline-color: #e74c3c;
+    --ai-bg-color: #25281e;
+    --ai-border-color: #8a7300;
+}
+
+body {
+    background-color: var(--bg-color);
+    color: var(--text-color);
+    font-family: Arial, "Helvetica Neue", sans-serif;
+    margin: 0;
+    padding: 20px;
+}
+
+.container {
+    max-width: 800px;
+    margin: 0 auto;
+    background: var(--card-bg-color);
+    padding: 25px;
+    border-radius: 12px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.6);
+}
+
+.container-large {
+    max-width: 1000px;
+}
+
+.header-status {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 2px solid var(--border-color);
+    padding-bottom: 12px;
+}
+
+h1 {
+    color: var(--primary-color);
+    margin: 0;
+    font-size: 1.5rem;
+}
+
+h2 {
+    font-size: 1.2rem;
+    margin-top: 25px;
+    border-left: 4px solid var(--primary-color);
+    padding-left: 10px;
+}
+
+.sub-info {
+    color: var(--sub-text-color);
+    font-size: 0.85rem;
+    margin: 10px 0 20px 0;
+}
+
+/* ステータスバッジ */
+.status-badge {
+    padding: 6px 14px;
+    border-radius: 20px;
+    font-size: 0.85rem;
+    font-weight: bold;
+}
+.status-badge.online {
+    background-color: rgba(46, 204, 113, 0.15);
+    color: var(--online-color);
+    border: 1px solid var(--online-color);
+}
+.status-badge.offline {
+    background-color: rgba(231, 76, 60, 0.15);
+    color: var(--offline-color);
+    border: 1px solid var(--offline-color);
+}
+
+/* 現在の3ステータスカード */
+.metrics-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 15px;
+    margin-bottom: 20px;
+}
+.metric-card {
+    background-color: var(--item-bg-color);
+    padding: 15px;
+    border-radius: 8px;
+    text-align: center;
+}
+.metric-title {
+    font-size: 0.85rem;
+    color: var(--sub-text-color);
+}
+.metric-value {
+    font-size: 1.6rem;
+    font-weight: bold;
+    color: #ffffff;
+    margin-top: 5px;
+}
+.metric-value .unit {
+    font-size: 0.9rem;
+}
+
+/* AI分析ボックス */
+.ai-box {
+    background-color: var(--ai-bg-color);
+    border: 1px solid var(--ai-border-color);
+    padding: 15px;
+    border-radius: 8px;
+    margin-bottom: 20px;
+}
+.ai-box h3 {
+    margin: 0 0 8px 0;
+    font-size: 1rem;
+    color: #ffd700;
+}
+.ai-box p {
+    margin: 0;
+    font-size: 0.95rem;
+    line-height: 1.4;
+}
+
+/* 最新10件カードリスト */
+.log-card {
+    background-color: var(--item-bg-color);
+    padding: 15px;
+    margin-bottom: 12px;
+    border-radius: 8px;
+    line-height: 1.8;
+}
+.log-timestamp {
+    color: #ffffff;
+    font-weight: bold;
+    border-bottom: 1px solid var(--border-color);
+    padding-bottom: 5px;
+    margin-bottom: 8px;
+}
+
+/* テーブルスタイル (DB閲覧用) */
+.table-wrapper {
+    overflow-x: auto;
+}
+.data-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 15px;
+}
+.data-table th, .data-table td {
+    border: 1px solid var(--border-color);
+    padding: 10px;
+    text-align: center;
+}
+.data-table th {
+    background-color: #252525;
+    color: var(--primary-color);
+}
+.data-table tr:nth-child(even) {
+    background-color: #181818;
+}
+
+/* ボタン */
+.footer-action {
+    text-align: center;
+    margin-top: 30px;
+}
+.btn {
+    display: inline-block;
+    padding: 12px 24px;
+    border-radius: 6px;
+    text-decoration: none;
+    font-weight: bold;
+    cursor: pointer;
+    border: none;
+    font-size: 0.95rem;
+}
+.btn-success { background-color: #27ae60; color: white; }
+.btn-primary { background-color: #2980b9; color: white; }
+.btn-secondary { background-color: #7f8c8d; color: white; }
+.btn:hover { opacity: 0.85; }

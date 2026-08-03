@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>データベース ログ閲覧画面</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container container-large">
+        <header class="header-status">
+            <h1>📊 データベース ログ閲覧画面</h1>
+            <a href="/" class="btn btn-success">← AI分析 (トップ画面) へ戻る</a>
+        </header>
+
+        <div class="sub-info">
+            参照DB: ローカルデータベース (SQLite) | 全 <span id="total-count">0</span> 件中 <span id="log-count">0</span> 件表示中
+        </div>
+
+        <!-- ログテーブル -->
+        <div class="table-wrapper">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>日時</th>
+                        <th>気温 (℃)</th>
+                        <th>湿度 (%)</th>
+                        <th>土壌水分量 (%)</th>
+                    </tr>
+                </thead>
+                <tbody id="history-tbody">
+                    <tr><td colspan="4" style="text-align: center;">データを読み込んでいます...</td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- 全件読み込み / 20件に戻す 切替ボタン -->
+        <div class="footer-action">
+            <button id="load-all-btn" class="btn btn-success">データを読み込んでいます...</button>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='history.js') }}"></script>
+</body>
+</html>

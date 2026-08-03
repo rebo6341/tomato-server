@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>トマト栽培 ステータスインサイト</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <!-- 1. ヘッダーエリア -->
+        <header class="header-status">
+            <h1>🍅 トマト監視 ダッシュボード</h1>
+            <div id="network-status" class="status-badge offline">● オフライン (判定中)</div>
+        </header>
+
+        <!-- 2. サブ情報 -->
+        <div class="sub-info">
+            最終計測時刻: <span id="last-updated">----/--/-- --:--:--</span> (5秒自動更新)
+        </div>
+
+        <!-- 3. 現在のステータス表示（3列のカード） -->
+        <div class="metrics-grid">
+            <div class="metric-card">
+                <div class="metric-title">現在の気温</div>
+                <div class="metric-value"><span id="curr-temp">--.-</span> <span class="unit">℃</span></div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-title">現在の湿度</div>
+                <div class="metric-value"><span id="curr-humidity">--.-</span> <span class="unit">%</span></div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-title">現在の土壌水分量</div>
+                <div class="metric-value"><span id="curr-soil">--.-</span> <span class="unit">%</span></div>
+            </div>
+        </div>
+
+        <!-- 4. AI分析エリア -->
+        <div class="ai-box">
+            <h3>🤖 AI分析（ステータスインサイト）</h3>
+            <p id="ai-analysis-text">最新データを読み込んでいます...</p>
+        </div>
+
+        <!-- 5. 直近のセンサーログ（最新10件） -->
+        <h2>直近のセンサーログ (最新10件)</h2>
+        <div id="recent-logs">
+            <p>データを読み込んでいます...</p>
+        </div>
+
+        <!-- 6. 最下部：DB全履歴画面へのボタン -->
+        <div class="footer-action">
+            <a href="/history" class="btn btn-success">DB全履歴データを見る (DB画面へ)</a>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>
