@@ -80,6 +80,14 @@ def index():
 def history():
     return render_template('history.html')
 
+@app.route('/camera')
+def camera():
+    return render_template('camera.html')
+
+@app.route('/watering')
+def watering():
+    return render_template('watering.html')
+
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)
 
