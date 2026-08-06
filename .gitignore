@@ -1,6 +1,4 @@
-*.db
+.env
 local_sensor.db
 __pycache__/
-*.py[cod]
-.vscode/
-.idea/
+*.pyc
