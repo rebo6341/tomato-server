@@ -1,4 +1,16 @@
+# 環境変数・APIキー
 .env
-local_sensor.db
+
+# データベースファイル
+*.db
+*.sqlite3
+
+# Pythonのキャッシュ
 __pycache__/
 *.pyc
+
+# VS Code などの設定
+.vscode/
+
+# ログ
+app.log
