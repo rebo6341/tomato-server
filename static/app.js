@@ -1,7 +1,13 @@
 // ラズパイ通信監視しきい値 (30秒間更新がなければオフラインと判定)
 const OFFLINE_THRESHOLD_MS = 30000; 
 
+// 音声再生中フラグ（再生中は5秒ごとの画面更新を止める）
+let isSpeaking = false;
+
 function fetchDashboardData() {
+    // 音声生成・再生中なら画面更新をスキップ
+    if (isSpeaking) return;
+
     // 直近10件を取得
     fetch('/api/data?limit=10')
         .then(response => {
@@ -65,6 +71,81 @@ function fetchDashboardData() {
             statusBadge.textContent = '○ オフライン (サーバー接続エラー)';
             statusBadge.className = 'status-badge offline';
         });
+}
+
+// VOICEVOX 音声再生関数
+async function speakPart(partType, speakerId, buttonId) {
+    const textElement = document.getElementById('ai-analysis-text');
+    const button = document.getElementById(buttonId);
+    if (!textElement || !button) return;
+
+    const fullText = textElement.innerText;
+    if (!fullText || fullText.includes('読み込んでいます')) {
+        alert('読み上げるテキストがありません');
+        return;
+    }
+
+    // --- 1. テキストの分割抽出 ---
+    let targetText = '';
+    if (partType === 'status') {
+        // 【状況】の部分を抽出
+        const match = fullText.match(/【状況】([\s\S]*?)(?=【対策】|$)/);
+        targetText = match ? match[1].trim() : fullText;
+    } else if (partType === 'action') {
+        // 【対策】の部分を抽出
+        const match = fullText.match(/【対策】([\s\S]*?)$/);
+        targetText = match ? match[1].trim() : fullText;
+    }
+
+    if (!targetText) {
+        alert('該当するテキストが見つかりませんでした');
+        return;
+    }
+
+    // UI変化用の元テキスト保持
+    const originalText = button.innerText;
+
+    try {
+        isSpeaking = true; // タイマー更新一時停止
+        button.disabled = true;
+        button.innerText = '⏳ 生成中...';
+        button.style.opacity = '0.7';
+
+        const response = await fetch('/generate-voice', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text: targetText, speaker: speakerId })
+        });
+
+        if (!response.ok) throw new Error('音声生成失敗');
+
+        const blob = await response.blob();
+        const audioUrl = URL.createObjectURL(blob);
+        const audio = new Audio(audioUrl);
+
+        // 再生開始時
+        audio.onplay = () => {
+            button.innerText = '🔊 再生中...';
+        };
+
+        // 再生終了時（元の状態に戻す）
+        audio.onended = () => {
+            isSpeaking = false;
+            button.disabled = false;
+            button.innerText = originalText;
+            button.style.opacity = '1.0';
+        };
+
+        await audio.play();
+
+    } catch (err) {
+        console.error('音声再生エラー:', err);
+        alert('音声再生に失敗しました。');
+        isSpeaking = false;
+        button.disabled = false;
+        button.innerText = originalText;
+        button.style.opacity = '1.0';
+    }
 }
 
 // 起動時実行 & 5秒ごとに自動更新

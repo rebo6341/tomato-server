@@ -3,14 +3,23 @@ import json
 import os
 import sqlite3
 from dotenv import load_dotenv
-from flask import Flask, jsonify, render_template, request, send_from_directory
+from flask import Flask, jsonify, render_template, request, send_from_directory, send_file
 from groq import Groq
+from io import BytesIO
+import requests
+
+# app.py があるディレクトリの .env を確実に読み込む
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+load_dotenv(os.path.join(BASE_DIR, '.env'))
 
 app = Flask(__name__, static_folder='static', template_folder='templates')
 DB_NAME = 'local_sensor.db'
 
 # Groq APIキーの設定
 GROQ_API_KEY = os.getenv('GROQ_API_KEY')
+if not GROQ_API_KEY:
+    raise ValueError('.env ファイルに GROQ_API_KEY が設定されていません。')
+
 client = Groq(api_key=GROQ_API_KEY)
 
 # キャッシュ用変数（10秒間キャッシュ）
@@ -183,6 +192,42 @@ def watering():
 @app.route('/favicon.ico')
 def serve_apple_icon():
   return send_from_directory('static', 'icon.png', mimetype='image/png')
+
+# VOICEVOX ENGINE の URL
+VOICEVOX_URL = 'http://localhost:50021'
+
+
+@app.route('/generate-voice', methods=['POST'])
+def generate_voice():
+  data = request.get_json()
+  text = data.get('text', '')
+  speaker_id = data.get('speaker', 3)  # 初期値: 3 (ずんだもん ノーマル)
+
+  if not text:
+    return jsonify({'error': 'No text provided'}), 400
+
+  try:
+    # 1. 音声合成用のクエリを作成
+    query_res = requests.post(
+        f'{VOICEVOX_URL}/audio_query',
+        params={'text': text, 'speaker': speaker_id},
+        timeout=5,
+    )
+    query_data = query_res.json()
+
+    # 2. 音声波形データを生成
+    synth_res = requests.post(
+        f'{VOICEVOX_URL}/synthesis',
+        params={'speaker': speaker_id},
+        json=query_data,
+        timeout=10,
+    )
+
+    # 生成した WAV データを返却
+    return send_file(BytesIO(synth_res.content), mimetype='audio/wav')
+
+  except Exception as e:
+    return jsonify({'error': str(e)}), 500
 
 
 if __name__ == '__main__':
