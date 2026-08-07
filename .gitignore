@@ -14,3 +14,6 @@ __pycache__/
 
 # ログ
 app.log
+venv/
+*.log
+.env
