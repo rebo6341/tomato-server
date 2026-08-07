@@ -1,11 +1,13 @@
 from datetime import datetime, timedelta
+from io import BytesIO
 import json
 import os
 import sqlite3
+
 from dotenv import load_dotenv
-from flask import Flask, jsonify, render_template, request, send_from_directory, send_file
+from flask import Flask, jsonify, render_template, request, send_file, send_from_directory
+from flask_socketio import SocketIO, emit
 from groq import Groq
-from io import BytesIO
 import requests
 
 # app.py があるディレクトリの .env を確実に読み込む
@@ -13,12 +15,15 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 load_dotenv(os.path.join(BASE_DIR, '.env'))
 
 app = Flask(__name__, static_folder='static', template_folder='templates')
+# SocketIO の初期化 (CORSを許可)
+socketio = SocketIO(app, cors_allowed_origins='*')
+
 DB_NAME = 'local_sensor.db'
 
 # Groq APIキーの設定
 GROQ_API_KEY = os.getenv('GROQ_API_KEY')
 if not GROQ_API_KEY:
-    raise ValueError('.env ファイルに GROQ_API_KEY が設定されていません。')
+  raise ValueError('.env ファイルに GROQ_API_KEY が設定されていません。')
 
 client = Groq(api_key=GROQ_API_KEY)
 
@@ -123,11 +128,25 @@ def receive_data():
     if not ai_comment:
       ai_comment = analyze_with_groq(temp, humi, soil)
 
+    # データベースへの保存
     execute_query(
         'INSERT INTO local_sensor_data (timestamp, temperature, humidity,'
         ' soil_moisture, ai_analysis) VALUES (?, ?, ?, ?, ?)',
         (ts, temp, humi, soil, ai_comment),
     )
+
+    # 💡 リアルタイム通知: 全ブラウザクライアントへ WebSocket イベントを送信
+    socketio.emit(
+        'sensor_db_updated',
+        {
+            'timestamp': ts,
+            'temperature': temp,
+            'humidity': humi,
+            'soil_moisture': soil,
+            'ai_analysis': ai_comment,
+        },
+    )
+
     return jsonify({'status': 'success', 'ai_analysis': ai_comment}), 200
   except Exception as e:
     return jsonify({'status': 'error', 'message': str(e)}), 400
@@ -193,6 +212,7 @@ def watering():
 def serve_apple_icon():
   return send_from_directory('static', 'icon.png', mimetype='image/png')
 
+
 # VOICEVOX ENGINE の URL
 VOICEVOX_URL = 'http://localhost:50021'
 
@@ -231,4 +251,5 @@ def generate_voice():
 
 
 if __name__ == '__main__':
-  app.run(host='0.0.0.0', port=5000, debug=True)
+  # 💡 Flask-SocketIO で起動するように変更
+  socketio.run(app, host='0.0.0.0', port=5000, debug=True, allow_unsafe_werkzeug=True)
