@@ -1,15 +1,16 @@
 #!/bin/bash
-
-# 既存の ngrok や app.py プロセスがあれば終了
-pkill -f "app.py"
+# 既存の gunicorn や ngrok プロセスがあれば終了
+pkill -f "gunicorn"
 pkill -f "ngrok"
 
-# Flask サーバーをバックグラウンドで起動（仮想環境のPythonを指定）
+# サーバーディレクトリへ移動
 cd /home/rebosura/Desktop/tomato-pwa-server
-./venv/bin/python app.py &
 
-# Flask が立ち上がるまで 3 秒待機
-sleep 3
+# gunicorn を本番用サーバーとして起動（バックグラウンド）
+PYTHONUNBUFFERED=1 ./venv/bin/gunicorn -k gthread -w 1 --threads 100 -b 0.0.0.0:5000 --timeout 300 --graceful-timeout 5 app:app &
+
+# gunicorn が立ち上がるまで待機
+sleep 5
 
 # ngrok を固定ドメイン指定で起動
 ngrok http --url=shine-ricotta-aground.ngrok-free.dev 5000

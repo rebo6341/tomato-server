@@ -1,0 +1,626 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="theme-color" content="#0ed9b4">
+    <title>ヨクソダテール | ダイコンファイターズ</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="apple-touch-icon" href="{{ url_for('static', filename='icon.png') }}">
+    <style>
+    .fb-screen{display:none}
+    .fb-screen.active{display:block}
+
+    .fb-cards{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin:4px 0 16px}
+    .fb-card{background:var(--white);border-radius:var(--radius-md);padding:12px 8px 14px;text-align:center;cursor:pointer;border:2.5px solid transparent;transition:transform .15s ease,border-color .15s ease;-webkit-tap-highlight-color:transparent}
+    .fb-card:active{transform:scale(.96)}
+    .fb-card.is-selected{border-color:var(--green);box-shadow:var(--shadow-card)}
+    .fb-card-mini{width:66px;height:66px;margin:0 auto 6px}
+    .fb-card-mini svg{width:100%;height:100%;display:block;overflow:visible}
+    .fb-card b{display:block;font-size:.8rem;color:var(--ink)}
+    .fb-card .fb-desc{display:block;font-size:.68rem;color:var(--ink-soft);margin:2px 0 6px}
+    .fb-stat-row{display:flex;align-items:center;gap:5px;margin:3px 0}
+    .fb-stat-row span{font-size:.6rem;color:var(--ink-faint);width:34px;text-align:left;flex-shrink:0}
+    .fb-stat{flex:1;height:5px;background:var(--mint-card-soft);border-radius:4px;overflow:hidden}
+    .fb-stat i{display:block;height:100%;background:linear-gradient(90deg,var(--green),#13b8c9)}
+
+    .fb-hud{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:10px}
+    .fb-hud-side{flex:1;min-width:0}
+    .fb-hud-name{font-size:.68rem;font-weight:800;color:var(--ink-soft);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .fb-hud-side.cpu{text-align:right}
+    .fb-hud-top{display:flex;justify-content:space-between;align-items:baseline;gap:4px}
+    .fb-rounds{font-size:.75rem;letter-spacing:2px;color:var(--amber-dark)}
+    .fb-bar{height:12px;border-radius:6px;background:rgba(20,36,51,.14);overflow:hidden;margin-top:3px}
+    .fb-bar i{display:block;height:100%;width:100%;background:linear-gradient(90deg,#5ddd55,#d9e83d,#ff9b21);transition:width .1s linear}
+    .fb-hud-side.cpu .fb-bar i{margin-left:auto}
+    .fb-meter{height:5px;border-radius:3px;background:rgba(20,36,51,.14);overflow:hidden;margin-top:4px}
+    .fb-meter i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--green),#1a8fe3)}
+    .fb-timer{font-weight:900;font-size:1.35rem;color:var(--ink);min-width:32px;text-align:center;flex-shrink:0}
+
+    .fb-arena{position:relative;width:100%;height:210px;border-radius:var(--radius-md);overflow:hidden;
+      background:linear-gradient(#aee0f4 0 56%,#e6c793 56%,#5a3d29 100%);
+      box-shadow:inset 0 0 0 2px rgba(255,255,255,.5)}
+    .fb-ground{position:absolute;left:0;right:0;bottom:0;height:14%;background:linear-gradient(#d29a55,#6b3d20);border-top:3px solid var(--green)}
+    .fb-fighter{position:absolute;bottom:0;pointer-events:none;filter:drop-shadow(0 4px 3px rgba(0,0,0,.35));will-change:transform,left,bottom}
+    .fb-fighter-body{position:absolute;left:50%;bottom:0;transform:translateX(-50%);width:96%;height:96%}
+    .fb-fighter-body svg{width:100%;height:100%;display:block;overflow:visible}
+    .fb-announce{position:absolute;inset:0;z-index:20;display:flex;align-items:center;justify-content:center;text-align:center;padding:0 10px;
+      font-size:1.5rem;font-weight:900;color:#fff;text-shadow:0 2px 6px rgba(0,0,0,.55);pointer-events:none}
+    .fb-fx{position:absolute;z-index:15;font-weight:900;font-size:.8rem;color:#fff;text-shadow:0 2px 4px rgba(0,0,0,.55);pointer-events:none;animation:fbfx .35s forwards}
+    .fb-superfx{position:absolute;z-index:16;font-weight:900;font-size:1.15rem;color:#fff;text-shadow:0 0 10px var(--green);pointer-events:none;animation:fbsfx .5s forwards}
+    .fb-projectile{position:absolute;z-index:12;border-radius:50%;background:#f7f7e8;border:2px solid #91bd3c;box-shadow:0 0 8px #d8ff55}
+    @keyframes fbfx{to{transform:scale(1.4);opacity:0}}
+    @keyframes fbsfx{0%{transform:scale(.2);opacity:0}45%{transform:scale(1.3);opacity:1}100%{transform:scale(1.8);opacity:0}}
+
+    .fb-controls{margin-top:12px;display:flex;flex-direction:column;gap:8px}
+    .fb-row{display:flex;gap:8px;justify-content:center}
+    .fb-btn{flex:1;min-width:0;height:44px;border:none;border-radius:var(--radius-sm);background:var(--mint-card);color:var(--ink);
+      font-weight:800;font-size:.8rem;display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;
+      box-shadow:var(--shadow-card);transition:transform .1s ease,filter .1s ease;touch-action:manipulation;padding:0}
+    .fb-btn:active,.fb-btn.is-pressed{transform:scale(.92);filter:brightness(.92)}
+    .fb-btn.fb-atk{background:var(--green);color:#fff}
+    .fb-btn.fb-spc{background:#1a8fe3;color:#fff}
+    .fb-btn.fb-grd{background:var(--navy-btn);color:#fff}
+
+    .fb-postgame{display:none;margin-top:14px}
+    .fb-postgame.is-visible{display:block}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header class="page-header">
+            <h1>🥊 ダイコンファイターズ</h1>
+        </header>
+
+        <div class="sub-info">
+            ダイコンファイターを選んでCPUと対戦！ 先に2ラウンド勝った方が勝利です。移動・攻撃はボタンかキーボード（A/D移動、W/S、J弱・K強・L大根弾・I掴み・U必殺・Bガード）で操作できます。
+        </div>
+
+        <div class="game-stage">
+
+            <div class="fb-screen active" id="fbSelect">
+                <div class="fb-cards" id="fbCards"></div>
+                <div class="footer-action" style="margin-top:0;">
+                    <button type="button" id="fbBattleBtn" class="btn btn-success" style="flex:1 1 100%;">
+                        <span class="btn-label">▶ たたかう</span>
+                    </button>
+                </div>
+            </div>
+
+            <div class="fb-screen" id="fbBattle">
+                <div class="fb-hud">
+                    <div class="fb-hud-side">
+                        <div class="fb-hud-top"><span class="fb-hud-name" id="fbPName">PLAYER</span><span class="fb-rounds" id="fbPRounds">○○</span></div>
+                        <div class="fb-bar"><i id="fbPHp"></i></div>
+                        <div class="fb-meter"><i id="fbPMeter"></i></div>
+                    </div>
+                    <div class="fb-timer" id="fbTimer">99</div>
+                    <div class="fb-hud-side cpu">
+                        <div class="fb-hud-top"><span class="fb-rounds" id="fbCRounds">○○</span><span class="fb-hud-name" id="fbCName">CPU</span></div>
+                        <div class="fb-bar"><i id="fbCHp"></i></div>
+                        <div class="fb-meter"><i id="fbCMeter"></i></div>
+                    </div>
+                </div>
+
+                <div class="fb-arena" id="fbArena">
+                    <div class="fb-ground"></div>
+                    <div class="fb-announce" id="fbAnnounce"></div>
+                </div>
+
+                <p class="game-message" id="fbMessage">&nbsp;</p>
+
+                <div class="fb-controls" id="fbControls">
+                    <div class="fb-row">
+                        <button type="button" class="fb-btn" data-key="a">◀</button>
+                        <button type="button" class="fb-btn" data-key="w">▲</button>
+                        <button type="button" class="fb-btn" data-key="s">▼</button>
+                        <button type="button" class="fb-btn" data-key="d">▶</button>
+                    </div>
+                    <div class="fb-row">
+                        <button type="button" class="fb-btn fb-atk" data-key="j">弱</button>
+                        <button type="button" class="fb-btn fb-atk" data-key="k">強</button>
+                        <button type="button" class="fb-btn fb-atk" data-key="l">大根弾</button>
+                    </div>
+                    <div class="fb-row">
+                        <button type="button" class="fb-btn fb-grd" data-key="b">ガード</button>
+                        <button type="button" class="fb-btn" data-key="i">掴み</button>
+                        <button type="button" class="fb-btn fb-spc" data-key="u">必殺</button>
+                    </div>
+                </div>
+
+                <div class="fb-postgame" id="fbPostgame">
+                    <div class="footer-action" style="margin-top:0;">
+                        <button type="button" id="fbRetryBtn" class="btn btn-success" style="flex:1 1 100%;">
+                            <span class="btn-label">▶ もう一度戦う</span>
+                        </button>
+                    </div>
+                    <div class="footer-action">
+                        <button type="button" id="fbSelectBtn" class="btn btn-secondary" style="flex:1 1 100%;">
+                            <span class="btn-label">← ファイターを選び直す</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+        <div class="footer-action">
+            <a href="/games" class="btn btn-secondary" style="flex:1 1 100%;">← ミニゲーム一覧へ戻る</a>
+        </div>
+        <div class="footer-action">
+            <a href="/" class="btn btn-info btn-back-wide">ダッシュボードへ戻る</a>
+        </div>
+    </div>
+
+<script>
+(function () {
+    const $ = id => document.getElementById(id);
+    const arena = $('fbArena');
+    const AW = () => arena.clientWidth;
+    const AH = () => arena.clientHeight;
+    const GROUND_FRAC = 0.14;
+
+    // --------------------------------------------------
+    // 🌱 立ち絵：ヨクソダテールのミニトマト/ダイコンのマスコット(SVG)と
+    //    同じ画風（白い胴体＋葉の束＋太い黒アウトライン）をベースにしつつ、
+    //    4体それぞれ体型・葉の形・装飾（ハチマキ/ベルト/盾/覆面）を変えて
+    //    ひと目で見分けられるようにしたファイター
+    //    ・PNG画像の差し替えではなく、ポーズごとにSVGを組み立てて描画する方式
+    // --------------------------------------------------
+    function daikonBodyPath(fill,outline,sx,sy){
+      fill=fill||'#fbf8ef'; outline=outline||'#2a2016'; sx=sx||1; sy=sy||1;
+      return `<g transform="translate(62 77) scale(${sx} ${sy}) translate(-62 -77)">
+        <path d="M30 46 Q28 16 62 14 Q96 16 94 46 L90 108 Q86 138 62 141 Q38 138 34 108 Z" fill="${fill}" stroke="${outline}" stroke-width="4" stroke-linejoin="round"/>
+      </g>`;
+    }
+    function daikonLeavesSvg(tilt,accent,center,mode,outline){
+      const t=tilt||0, a=accent||'#3f9c5c', c=center||'#4caf6b', o=outline||'#2a2016';
+      if(mode==='compact'){
+        return `<g transform="rotate(${t*0.5} 62 22)">
+          <ellipse cx="48" cy="18" rx="11" ry="16" fill="${a}" stroke="${o}" stroke-width="3" transform="rotate(-10 48 18)"/>
+          <ellipse cx="62" cy="8" rx="13" ry="19" fill="${c}" stroke="${o}" stroke-width="3"/>
+          <ellipse cx="76" cy="16" rx="11" ry="16" fill="${a}" stroke="${o}" stroke-width="3" transform="rotate(10 76 16)"/>
+        </g>`;
+      }
+      if(mode==='sharp'){
+        return `<g transform="rotate(${t} 62 24)">
+          <path d="M62 30 L44 -4 L54 22 Z" fill="${a}" stroke="${o}" stroke-width="3" stroke-linejoin="round"/>
+          <path d="M62 30 L62 -10 L70 26 Z" fill="${c}" stroke="${o}" stroke-width="3" stroke-linejoin="round"/>
+          <path d="M62 30 L80 -4 L70 22 Z" fill="${a}" stroke="${o}" stroke-width="3" stroke-linejoin="round"/>
+        </g>`;
+      }
+      return `<g transform="rotate(${t} 62 24)">
+        <ellipse cx="42" cy="14" rx="15" ry="22" fill="${a}" stroke="${o}" stroke-width="3" transform="rotate(-18 42 14)"/>
+        <ellipse cx="62" cy="4" rx="16" ry="24" fill="${c}" stroke="${o}" stroke-width="3"/>
+        <ellipse cx="82" cy="12" rx="15" ry="22" fill="${a}" stroke="${o}" stroke-width="3" transform="rotate(16 82 12)"/>
+        <ellipse cx="50" cy="9" rx="6" ry="11" fill="#8fe07a" opacity="0.6" transform="rotate(-10 50 9)"/>
+        <ellipse cx="72" cy="7" rx="6" ry="11" fill="#8fe07a" opacity="0.6" transform="rotate(10 72 7)"/>
+      </g>`;
+    }
+    function daikonLimb(x1,y1,x2,y2,w,fill,outline){
+      w=w||16; fill=fill||'#fbf8ef'; outline=outline||'#2a2016';
+      return `<path d="M${x1} ${y1} L${x2} ${y2}" stroke="${outline}" stroke-width="${w+5}" stroke-linecap="round"/>`+
+             `<path d="M${x1} ${y1} L${x2} ${y2}" stroke="${fill}" stroke-width="${w}" stroke-linecap="round"/>`;
+    }
+    function daikonFace(kind,outline){
+      const o=outline||'#2a2016';
+      switch(kind){
+        case 'attack':
+          return `<path d="M42 62 L54 58" stroke="${o}" stroke-width="4" stroke-linecap="round"/>
+            <path d="M70 58 L82 62" stroke="${o}" stroke-width="4" stroke-linecap="round"/>
+            <path d="M52 82 Q62 76 72 82" stroke="${o}" stroke-width="4" fill="none" stroke-linecap="round"/>`;
+        case 'hit':
+          return `<path d="M40 58 L52 66 M52 58 L40 66" stroke="${o}" stroke-width="4" stroke-linecap="round"/>
+            <path d="M72 58 L84 66 M84 58 L72 66" stroke="${o}" stroke-width="4" stroke-linecap="round"/>
+            <ellipse cx="62" cy="86" rx="7" ry="9" fill="#8c2f27"/>`;
+        case 'ko':
+          return `<path d="M40 58 L52 70 M52 58 L40 70" stroke="${o}" stroke-width="4" stroke-linecap="round"/>
+            <path d="M72 58 L84 70 M84 58 L72 70" stroke="${o}" stroke-width="4" stroke-linecap="round"/>
+            <path d="M50 88 Q62 82 74 88" stroke="${o}" stroke-width="4" fill="none" stroke-linecap="round"/>`;
+        case 'win':
+          return `<path d="M40 60 Q46 54 52 60" stroke="${o}" stroke-width="4" fill="none" stroke-linecap="round"/>
+            <path d="M72 60 Q78 54 84 60" stroke="${o}" stroke-width="4" fill="none" stroke-linecap="round"/>
+            <path d="M46 80 Q62 96 78 80" stroke="${o}" stroke-width="4" fill="none" stroke-linecap="round"/>`;
+        case 'guard':
+          return `<circle cx="46" cy="62" r="6" fill="${o}"/><circle cx="78" cy="62" r="6" fill="${o}"/>
+            <path d="M52 84 L72 84" stroke="${o}" stroke-width="4" stroke-linecap="round"/>`;
+        default:
+          return `<circle cx="46" cy="62" r="6" fill="${o}"/><circle cx="78" cy="62" r="6" fill="${o}"/>
+            <circle cx="47.6" cy="60" r="2" fill="#fff"/><circle cx="79.6" cy="60" r="2" fill="#fff"/>
+            <path d="M50 80 Q62 87 74 80" stroke="${o}" stroke-width="4" fill="none" stroke-linecap="round"/>`;
+      }
+    }
+    // pose(アクション名) ごとの見た目の差分回数。walk/back は2コマで葉を左右に揺らす
+    const POSE_FRAMES={idle:1,walk:2,back:2,crouch:1,jump:1,air:1,dash:1,light:1,heavy:1,throw:1,kick:1,slide:1,super:1,hit:1,launch:1,win:1};
+    // キャラクターの見た目差分（体型・葉の形・アクセサリー）
+    function daikonPoseSvg(pose,c,frame){
+      c=c||{};
+      const accent=c.accent||'#3f9c5c', center=c.center||'#4caf6b';
+      const fill=c.bodyFill||'#fbf8ef', outline=c.outline||'#2a2016';
+      const sx=c.scaleX||1, sy=c.scaleY||1, leafMode=c.leafMode||'normal';
+      const cheeks='<ellipse cx="42" cy="70" rx="6" ry="4" fill="#ffb3ba" opacity="0.7"/><ellipse cx="82" cy="70" rx="6" ry="4" fill="#ffb3ba" opacity="0.7"/>';
+      let leafTilt=0, faceKind='idle', limbs='', wrap='';
+      switch(pose){
+        case 'walk': case 'back':
+          leafTilt=frame?8:-8;
+          limbs=frame? daikonLimb(36,80,16,92,16,fill,outline)+daikonLimb(88,80,108,92,16,fill,outline)
+                     : daikonLimb(36,80,20,100,16,fill,outline)+daikonLimb(88,80,104,100,16,fill,outline);
+          break;
+        case 'crouch':
+          wrap=`translate(0 14) scale(1 .9)`;
+          limbs=daikonLimb(34,90,18,104,16,fill,outline)+daikonLimb(90,90,106,104,16,fill,outline);
+          break;
+        case 'jump': case 'air': case 'dash':
+          leafTilt=-10;
+          limbs=daikonLimb(34,78,14,66,16,fill,outline)+daikonLimb(90,78,110,66,16,fill,outline);
+          faceKind='attack';
+          break;
+        case 'light': case 'heavy': case 'kick': case 'slide': case 'super': case 'throw':
+          leafTilt=-18;
+          limbs=daikonLimb(34,72,112,58,16,fill,outline)+daikonLimb(90,92,58,120,16,fill,outline);
+          faceKind='attack';
+          break;
+        case 'hit':
+          leafTilt=16;
+          limbs=daikonLimb(34,86,20,70,16,fill,outline)+daikonLimb(90,86,104,70,16,fill,outline);
+          faceKind='hit';
+          break;
+        case 'launch':
+          wrap='rotate(85 62 78)';
+          leafTilt=30;
+          limbs=daikonLimb(34,86,14,86,16,fill,outline)+daikonLimb(90,86,110,86,16,fill,outline);
+          faceKind='ko';
+          break;
+        case 'win':
+          limbs=daikonLimb(34,80,10,48,16,fill,outline)+daikonLimb(90,80,114,48,16,fill,outline);
+          faceKind='win';
+          break;
+        case 'guard':
+          limbs=daikonLimb(40,74,84,66,16,fill,outline)+daikonLimb(84,74,40,66,16,fill,outline);
+          faceKind='guard';
+          break;
+        default:
+          limbs=daikonLimb(34,80,22,96,16,fill,outline)+daikonLimb(90,80,102,96,16,fill,outline);
+      }
+      const leaves=daikonLeavesSvg(leafTilt,accent,center,leafMode,outline);
+      const face=daikonFace(faceKind,outline);
+      const extra=typeof c.extra==='function'?c.extra(pose):'';
+      return `<svg viewBox="0 0 140 170" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:100%;overflow:visible;filter:drop-shadow(0 6px 8px rgba(0,0,0,.35));">
+        <g transform="${wrap}">
+          ${limbs}
+          ${daikonBodyPath(fill,outline,sx,sy)}
+          ${leaves}
+          ${cheeks}
+          ${face}
+          ${extra}
+        </g>
+      </svg>`;
+    }
+
+    const actions={idle:430,walk:105,back:105,crouch:140,jump:110,air:110,dash:80,light:70,heavy:95,kick:85,throw:90,slide:80,super:130,hit:70,launch:90,getup:120,win:500,lose:500};
+    const chars=[
+    {name:'DAIKON SPEED',speed:1.22,power:.92,def:.92,desc:'高速型',
+      bodyFill:'#fbf8ef',outline:'#2a2016',accent:'#3fd6b0',center:'#4caf6b',scaleX:0.9,scaleY:1.06,leafMode:'normal',
+      extra:()=>'<path d="M32 40 Q62 30 92 40 L86 48 Q62 40 38 48 Z" fill="#ff5b52" stroke="#2a2016" stroke-width="2.5"/><path d="M90 42 L104 36 M90 46 L102 52" stroke="#ff5b52" stroke-width="4" stroke-linecap="round"/>'},
+    {name:'DAIKON POWER',speed:.88,power:1.28,def:1.12,desc:'パワー型',
+      bodyFill:'#f7ecd8',outline:'#2a2016',accent:'#c76a2b',center:'#8a4a1d',scaleX:1.16,scaleY:0.95,leafMode:'normal',
+      extra:()=>'<path d="M28 96 Q62 110 96 96" stroke="#5a3418" stroke-width="11" fill="none"/><circle cx="62" cy="100" r="7" fill="#e8c46a" stroke="#2a2016" stroke-width="2.5"/>'},
+    {name:'DAIKON GUARD',speed:.94,power:1.02,def:1.32,desc:'防御型',
+      bodyFill:'#eaf3fb',outline:'#1f3350',accent:'#3a6ea5',center:'#245a86',scaleX:1.08,scaleY:0.98,leafMode:'compact',
+      extra:()=>'<path d="M50 74 L62 66 L74 74 L70 92 L62 98 L54 92 Z" fill="#9fd0ee" stroke="#1f3350" stroke-width="3"/>'},
+    {name:'DAIKON NINJA',speed:1.34,power:.86,def:.84,desc:'超高速型',
+      bodyFill:'#d3c9e6',outline:'#241a33',accent:'#4a3466',center:'#2e2148',scaleX:0.9,scaleY:1.02,leafMode:'sharp',
+      extra:()=>'<path d="M40 78 Q62 90 84 78 L84 88 Q62 100 40 88 Z" fill="#241a33"/><path d="M84 82 L98 74 M84 84 L96 92" stroke="#241a33" stroke-width="5" stroke-linecap="round"/>'}];
+
+    let chosen=0,keys={},g=null,raf=0;
+
+    // ---- 対戦カード(コンテナ)のサイズに合わせて全ての距離パラメータを縮尺する ----
+    let FIGHTER_W=76, FIGHTER_H=96, CENTER=38, SCALE=0.6, X_MARGIN=20;
+    let GRAVITY=930, JUMP_VY=360, MOVE_SPEED=204, CPU_SPEED=138;
+    let attackData={};
+    function computeScale(){
+      FIGHTER_W=Math.min(92,Math.max(56,Math.round(AW()*0.22)));
+      FIGHTER_H=Math.round(FIGHTER_W*1.27);
+      CENTER=FIGHTER_W/2;
+      SCALE=FIGHTER_W/125;
+      GRAVITY=1550*SCALE;
+      JUMP_VY=600*SCALE;
+      MOVE_SPEED=340*SCALE;
+      CPU_SPEED=230*SCALE;
+      X_MARGIN=Math.round(14*SCALE)+8;
+      attackData={
+        light:{dmg:7,range:105*SCALE,wind:75,cool:.28,stun:.16,knock:170*SCALE},
+        heavy:{dmg:14,range:120*SCALE,wind:105,cool:.55,stun:.28,knock:260*SCALE},
+        crouch:{dmg:9,range:105*SCALE,wind:75,cool:.4,stun:.2,knock:190*SCALE},
+        air:{dmg:11,range:115*SCALE,wind:90,cool:.45,stun:.22,knock:220*SCALE},
+        grab:{dmg:18,range:70*SCALE,wind:60,cool:.72,stun:.45,knock:330*SCALE}
+      };
+    }
+
+    function show(id){document.querySelectorAll('.fb-screen').forEach(e=>e.classList.remove('active'));$(id).classList.add('active')}
+    function buildCards(){
+      const box=$('fbCards'); box.innerHTML='';
+      chars.forEach((c,i)=>{
+        let d=document.createElement('div');
+        d.className='fb-card '+(i===chosen?'is-selected':'');
+        d.innerHTML=`<div class="fb-card-mini">${daikonPoseSvg('idle',c,0)}</div><b>${c.name}</b><span class="fb-desc">${c.desc}</span>
+          <div class="fb-stat-row"><span>SPEED</span><div class="fb-stat"><i style="width:${c.speed/1.34*100}%"></i></div></div>
+          <div class="fb-stat-row"><span>POWER</span><div class="fb-stat"><i style="width:${c.power/1.28*100}%"></i></div></div>
+          <div class="fb-stat-row"><span>DEF</span><div class="fb-stat"><i style="width:${c.def/1.32*100}%"></i></div></div>`;
+        d.onclick=()=>{chosen=i;buildCards()};
+        box.appendChild(d);
+      });
+    }
+
+    function createFighter(id,c,x,enemy){
+      let e=document.createElement('div'); e.className='fb-fighter';
+      e.style.width=FIGHTER_W+'px'; e.style.height=FIGHTER_H+'px';
+      let im=document.createElement('div'); im.className='fb-fighter-body';
+      e.appendChild(im); arena.appendChild(e);
+      let f={id,c,x,y:0,vx:0,vy:0,hp:100,meter:0,dir:enemy?-1:1,onGround:true,jumps:0,crouch:false,guard:false,ko:false,stun:0,attackCd:0,inv:0,action:'idle',actionStart:performance.now(),actionUntil:0,frame:-1,enemy,el:e,img:im};
+      setAction(f,'idle');
+      return f;
+    }
+    function setAction(f,a,duration=0){
+      if(!f||(f.ko&&a!=='lose'&&a!=='launch'))return;
+      if(f.action===a&&!duration)return;
+      f.action=a; f.actionStart=performance.now(); f.frame=0; f.img.innerHTML=daikonPoseSvg(a,f.c,0);
+      f.actionUntil=duration?performance.now()+duration:0;
+    }
+    function animate(f,now){
+      let frames=POSE_FRAMES[f.action]||POSE_FRAMES.idle;
+      let rate=actions[f.action]||100;
+      let idx=(f.action==='idle'||f.action==='win'||f.action==='lose')?0:Math.floor((now-f.actionStart)/rate)%frames;
+      if(f.actionUntil&&now>=f.actionUntil&&!f.ko&&!f.guard&&!f.crouch){setAction(f,'idle');idx=0}
+      if(idx!==f.frame){f.frame=idx;f.img.innerHTML=daikonPoseSvg(f.action,f.c,idx)}
+    }
+    function cleanupFighters(){
+      cancelAnimationFrame(raf);
+      arena.querySelectorAll('.fb-fighter,.fb-fx,.fb-superfx,.fb-projectile').forEach(e=>e.remove());
+      $('fbAnnounce').textContent='';
+      g=null;
+    }
+    function announce(t,ms,cb){
+      $('fbAnnounce').textContent=t;
+      setTimeout(()=>{if($('fbAnnounce').textContent===t){$('fbAnnounce').textContent='';if(cb)cb()}},ms);
+    }
+
+    function resetRound(){
+      computeScale();
+      let p=g.player,c=g.cpu;
+      p.x=X_MARGIN;p.y=0;p.vx=p.vy=0;p.hp=100;p.meter=0;p.ko=false;p.inv=0;p.stun=0;p.attackCd=0;p.dir=1;p.jumps=0;p.crouch=false;p.guard=false;
+      p.el.style.width=FIGHTER_W+'px';p.el.style.height=FIGHTER_H+'px'; setAction(p,'idle');
+      c.x=AW()-FIGHTER_W-X_MARGIN;c.y=0;c.vx=c.vy=0;c.hp=100;c.meter=0;c.ko=false;c.inv=0;c.stun=0;c.attackCd=0;c.dir=-1;c.jumps=0;c.crouch=false;c.guard=false;
+      c.el.style.width=FIGHTER_W+'px';c.el.style.height=FIGHTER_H+'px'; setAction(c,'idle');
+      g.time=99; g.active=false;
+      syncHud();
+      announce('ROUND '+g.round,650,()=>announce('FIGHT!',500,()=>g.active=true));
+    }
+    function syncHud(){
+      if(!g)return;
+      $('fbPHp').style.width=Math.max(0,g.player.hp)+'%';
+      $('fbCHp').style.width=Math.max(0,g.cpu.hp)+'%';
+      $('fbPMeter').style.width=g.player.meter+'%';
+      $('fbCMeter').style.width=g.cpu.meter+'%';
+      $('fbTimer').textContent=Math.ceil(g.time);
+      $('fbPRounds').textContent='●'.repeat(g.pWins)+'○'.repeat(2-g.pWins);
+      $('fbCRounds').textContent='●'.repeat(g.cWins)+'○'.repeat(2-g.cWins);
+    }
+    function updatePlayer(f,e,dt){
+      if(f.ko)return;
+      f.guard=!!keys.b&&f.onGround&&!f.crouch&&!f.attackCd;
+      if(f.guard){f.vx*=.65;setAction(f,'guard');return}
+      let move=(keys.a?-1:0)+(keys.d?1:0);
+      f.crouch=!!keys.s&&f.onGround;
+      if(f.crouch){f.vx*=.7;setAction(f,'crouch')}
+      else if(move){f.vx=move*MOVE_SPEED*f.c.speed;f.dir=move;setAction(f,move===Math.sign(e.x-f.x)?'walk':'back')}
+      else{f.vx*=.72;if(f.onGround&&Math.abs(f.vx)<18&&!['light','heavy','kick','throw','slide','super'].includes(f.action))setAction(f,'idle')}
+      if(keys.w&&f.jumps<2){f.vy=JUMP_VY;f.jumps++;f.onGround=false;setAction(f,'jump',450);keys.w=false}
+      if(keys.j){attack(f,e,'light');keys.j=false}
+      if(keys.k){attack(f,e,f.onGround?(f.crouch?'crouch':'heavy'):'air');keys.k=false}
+      if(keys.l){projectile(f,e);keys.l=false}
+      if(keys.i){attack(f,e,'grab');keys.i=false}
+      if(keys.u&&f.meter>=100){special(f,e);keys.u=false}
+    }
+    function updateCPU(f,p,dt){
+      if(f.ko)return;
+      f.guard=false;
+      let dist=p.x-f.x,ad=Math.abs(dist);
+      f.dir=dist>=0?1:-1;
+      f.aiTimer=(f.aiTimer||0)-dt;
+      if(f.stun>0){f.vx*=.85;return}
+      if(p.action==='super'&&ad<220*SCALE&&Math.random()<.7)f.guard=true;
+      if(ad>135*SCALE)f.vx=Math.sign(dist)*CPU_SPEED*f.c.speed;
+      else f.vx*=.75;
+      if(f.aiTimer<=0){
+        let r=Math.random();
+        if(ad<125*SCALE&&r<.55)attack(f,p,r<.12?'grab':r<.3?'heavy':'light');
+        else if(ad<360*SCALE&&r<.78)projectile(f,p);
+        else if(f.meter>=100&&r<.9)special(f,p);
+        else if(r>.84&&f.jumps<2){f.vy=JUMP_VY;f.jumps++;f.onGround=false;setAction(f,'jump',450)}
+        else if(r>.65)f.guard=true;
+        f.aiTimer=.25+Math.random()*.65;
+      }
+    }
+    function physics(f,dt){
+      if(f.stun>0)f.stun=Math.max(0,f.stun-dt);
+      f.attackCd=Math.max(0,f.attackCd-dt);
+      f.inv=Math.max(0,f.inv-dt);
+      f.vy-=GRAVITY*dt;
+      f.x+=f.vx*dt; f.y+=f.vy*dt;
+      if(f.y<=0){
+        f.y=0;f.vy=0;
+        if(!f.onGround){f.onGround=true;f.jumps=0;if(!f.ko&&!f.crouch&&!f.guard)setAction(f,'idle')}
+        f.onGround=true;
+      } else f.onGround=false;
+      f.x=Math.max(X_MARGIN,Math.min(f.x,AW()-FIGHTER_W-X_MARGIN));
+      f.el.style.left=f.x+'px';
+      f.el.style.bottom=(AH()*GROUND_FRAC+f.y)+'px';
+      f.el.style.transform=`scaleX(${f.dir})`;
+      if(f.crouch&&f.onGround)setAction(f,'crouch');
+      animate(f,performance.now());
+    }
+    function attack(a,b,type){
+      let d=attackData[type];
+      if(!d||a.ko||a.attackCd>0||a.stun>0)return;
+      a.attackCd=d.cool;
+      setAction(a,type==='grab'?'throw':type,360);
+      let delay=type==='grab'?125:90;
+      setTimeout(()=>{
+        if(!g||!g.active||a.ko)return;
+        let dx=(b.x+CENTER)-(a.x+CENTER);
+        if(Math.abs(dx)<=d.range&&Math.abs(b.y-a.y)<120*SCALE){
+          if(a.dir*dx>=-10)damage(b,a,d.dmg,false,d.knock,d.stun);
+        }
+      },delay);
+    }
+    function projectile(a,b){
+      if(a.ko||a.attackCd>.08||a.stun>0)return;
+      a.attackCd=.65;
+      setAction(a,'light',280);
+      let size=Math.round(30*SCALE);
+      let p=document.createElement('div');
+      p.className='fb-projectile';
+      p.style.width=size+'px'; p.style.height=size+'px';
+      arena.appendChild(p);
+      let x=a.x+(a.dir>0?FIGHTER_W-10:-size+10), life=0;
+      function go(){
+        if(!g||!g.active){p.remove();return}
+        life+=.016;
+        x+=a.dir*10*SCALE;
+        p.style.left=x+'px';
+        p.style.bottom=(AH()*GROUND_FRAC+a.y+95*SCALE)+'px';
+        let dx=(b.x+CENTER)-(x+size/2);
+        if(Math.abs(dx)<48*SCALE&&Math.abs(b.y-a.y)<100*SCALE){damage(b,a,5,false,170*SCALE,.15);p.remove();return}
+        if(life<1.8)requestAnimationFrame(go); else p.remove();
+      }
+      go();
+    }
+    function special(a,b){
+      if(a.ko||a.meter<100||a.stun>0)return;
+      a.meter=0; a.attackCd=1.35;
+      let idx=(a.special||0)%3; a.special=(idx+1)%3;
+      let action=['kick','slide','super'][idx];
+      setAction(a,action,850);
+      announce(action==='kick'?'DAIKON KICK!':action==='slide'?'DAIKON SLIDE!':'DAIKON FLASH!',500);
+      setTimeout(()=>{
+        if(!g||!g.active||a.ko)return;
+        for(let i=0;i<3;i++)setTimeout(()=>{
+          if(!g||!g.active||a.ko)return;
+          let dx=(b.x+CENTER)-(a.x+CENTER);
+          if(Math.abs(dx)<(action==='slide'?250*SCALE:430*SCALE)&&a.dir*dx>-30)damage(b,a,12,true,action==='slide'?330*SCALE:240*SCALE,.28);
+        },i*105);
+      },170);
+    }
+    function damage(v,a,base,isSuper,knock,stun){
+      if(v.ko||v.inv>0)return;
+      let mult=v.guard?.35:1;
+      let dmg=base*a.c.power/v.c.def*mult;
+      v.hp=Math.max(0,v.hp-dmg);
+      v.meter=Math.min(100,v.meter+dmg*2.2);
+      a.meter=Math.min(100,a.meter+dmg*.75);
+      v.inv=.14; v.stun=stun||.15;
+      v.vx=a.dir*(knock||150*SCALE)*(v.guard?.35:1);
+      v.vy=isSuper?260*SCALE:Math.min(170*SCALE,(knock||150*SCALE)*.35);
+      setAction(v,v.hp<=0?'launch':'hit',v.hp<=0?999999:330);
+      fx(v.x+CENTER,AH()*GROUND_FRAC+v.y+FIGHTER_H*0.45,Math.round(dmg),isSuper);
+      if(v.hp<=0){v.ko=true;v.guard=false;setAction(v,'launch',999999)}
+    }
+    function fx(x,b,t,superHit){
+      let e=document.createElement('div');
+      e.className=superHit?'fb-superfx':'fb-fx';
+      e.textContent=superHit?'K.O. BURST!':(t>=12?'CRITICAL!':'HIT!');
+      e.style.left=x+'px'; e.style.bottom=b+'px';
+      arena.appendChild(e);
+      setTimeout(()=>e.remove(),superHit?560:360);
+    }
+    function loop(now){
+      if(!g)return;
+      let dt=Math.min(.033,(now-g.last)/1000); g.last=now;
+      if(g.active){
+        g.time-=dt;
+        if(g.time<=0){g.time=0;endRound(g.player.hp>=g.cpu.hp?'p':'c');return}
+        updatePlayer(g.player,g.cpu,dt);
+        updateCPU(g.cpu,g.player,dt);
+        physics(g.player,dt);
+        physics(g.cpu,dt);
+        if(g.player.hp<=0)endRound('c');
+        else if(g.cpu.hp<=0)endRound('p');
+        syncHud();
+      }
+      raf=requestAnimationFrame(loop);
+    }
+    function endRound(w){
+      if(!g||!g.active)return;
+      g.active=false;
+      if(w==='p')g.pWins++; else g.cWins++;
+      syncHud();
+      let winner=w==='p'?'PLAYER WIN!':'CPU WIN!';
+      setAction(w==='p'?g.player:g.cpu,'win',999999);
+      setTimeout(()=>announce(winner,850,()=>{
+        if(g.pWins>=2||g.cWins>=2){
+          let msg=g.pWins>=2?'あなたはダイコンチャンピオンだ！':'CPUの勝利…';
+          $('fbMessage').textContent=`${msg}（${g.pWins} - ${g.cWins}）`;
+          cancelAnimationFrame(raf);
+          $('fbControls').style.display='none';
+          $('fbPostgame').classList.add('is-visible');
+        }else{
+          g.round=g.pWins+g.cWins+1;
+          resetRound();
+        }
+      }),350);
+    }
+    function startGame(){
+      cleanupFighters();
+      computeScale();
+      show('fbBattle');
+      $('fbControls').style.display='flex';
+      $('fbPostgame').classList.remove('is-visible');
+      $('fbMessage').textContent='\u00a0';
+      let pc=chars[chosen], ci=(chosen+1+Math.floor(Math.random()*3))%chars.length, cc=chars[ci];
+      g={round:1,pWins:0,cWins:0,time:99,last:performance.now(),active:false,
+        player:createFighter('p',pc,X_MARGIN,false),
+        cpu:createFighter('c',cc,AW()-FIGHTER_W-X_MARGIN,true)};
+      $('fbPName').textContent=pc.name;
+      $('fbCName').textContent='CPU '+cc.name;
+      syncHud();
+      announce('ROUND 1',700,()=>announce('READY?',650,()=>announce('FIGHT!',550,()=>g.active=true)));
+      raf=requestAnimationFrame(loop);
+    }
+
+    $('fbBattleBtn').onclick=startGame;
+    $('fbRetryBtn').onclick=startGame;
+    $('fbSelectBtn').onclick=()=>{cleanupFighters();show('fbSelect')};
+
+    document.addEventListener('keydown',e=>{
+      let k=e.key.toLowerCase();
+      if(['w','a','s','d','j','k','l','i','u','b'].includes(k)){
+        if($('fbBattle').classList.contains('active'))e.preventDefault();
+        keys[k]=true;
+      }
+    });
+    document.addEventListener('keyup',e=>{keys[e.key.toLowerCase()]=false});
+
+    document.querySelectorAll('.fb-btn').forEach(btn=>{
+      const key=btn.dataset.key;
+      const press=ev=>{ev.preventDefault();btn.classList.add('is-pressed');keys[key]=true;btn.setPointerCapture&&btn.setPointerCapture(ev.pointerId)};
+      const release=ev=>{ev.preventDefault();btn.classList.remove('is-pressed');keys[key]=false};
+      btn.addEventListener('pointerdown',press,{passive:false});
+      btn.addEventListener('pointerup',release,{passive:false});
+      btn.addEventListener('pointercancel',release,{passive:false});
+      btn.addEventListener('pointerleave',ev=>{if(ev.buttons===0)release(ev)},{passive:false});
+    });
+    window.addEventListener('blur',()=>{keys={};document.querySelectorAll('.fb-btn.is-pressed').forEach(b=>b.classList.remove('is-pressed'))});
+    document.addEventListener('visibilitychange',()=>{if(document.hidden)keys={}});
+    window.addEventListener('resize',()=>{
+      if(!g)return;
+      const maxX=Math.max(X_MARGIN,AW()-FIGHTER_W-X_MARGIN);
+      g.player.x=Math.min(Math.max(X_MARGIN,g.player.x),maxX);
+      g.cpu.x=Math.min(Math.max(X_MARGIN,g.cpu.x),maxX);
+    });
+
+    buildCards();
+})();
+</script>
+</body>
+</html>

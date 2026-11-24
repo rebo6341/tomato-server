@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="theme-color" content="#0ed9b4">
+    <title>ヨクソダテール | 詳細</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <header class="page-header">
+            <h1 id="page-title">📈 詳細</h1>
+        </header>
+
+        <!-- 🌱 表示中の品目切替（ミニトマト/ダイコン） -->
+        <div class="crop-switch-row">
+            <span class="crop-switch-label">表示中の品目</span>
+            <select id="crop-view-select" class="crop-select"></select>
+        </div>
+
+        <!-- 指標の切り替えタブ -->
+        <div class="detail-tabs">
+            <a href="/detail?type=temperature" class="detail-tab" id="tab-temperature">気温</a>
+            <a href="/detail?type=humidity" class="detail-tab" id="tab-humidity">湿度</a>
+            <a href="/detail?type=soil" class="detail-tab" id="tab-soil">土壌湿度</a>
+        </div>
+
+        <!-- 現在値 -->
+        <div class="detail-hero">
+            <div class="detail-hero-label" id="hero-label">現在の値</div>
+            <div class="detail-hero-value" id="hero-value">--.-<span class="unit" id="hero-unit"></span></div>
+            <div class="detail-hero-time">最終計測: <span id="hero-time">----/--/-- --:--:--</span></div>
+
+            <div class="detail-scale"></div>
+            <div class="detail-scale-labels">
+                <span id="scale-min">--</span>
+                <span id="scale-mid">低い ← 適正 → 高い</span>
+                <span id="scale-max">--</span>
+            </div>
+        </div>
+
+        <!-- 統計 -->
+        <div class="detail-stats">
+            <div class="detail-stat">
+                <div class="detail-stat-label">直近の平均</div>
+                <div class="detail-stat-value" id="stat-avg">--</div>
+            </div>
+            <div class="detail-stat">
+                <div class="detail-stat-label">最高</div>
+                <div class="detail-stat-value" id="stat-max">--</div>
+            </div>
+            <div class="detail-stat">
+                <div class="detail-stat-label">最低</div>
+                <div class="detail-stat-value" id="stat-min">--</div>
+            </div>
+        </div>
+
+        <!-- 推移グラフ -->
+        <div class="detail-chart-wrap">
+            <h3>直近60件の推移</h3>
+            <svg class="detail-chart" id="chart" viewBox="0 0 320 170" preserveAspectRatio="none"></svg>
+            <p style="font-size:0.75rem; color: var(--ink-soft); margin: 8px 0 0;">
+                左が古く、右が新しいデータです。
+            </p>
+        </div>
+
+        <!-- 状態の説明 -->
+        <div class="ai-box">
+            <h3 id="judge-title">いまの状態</h3>
+            <p id="judge-text">読み込んでいます...</p>
+        </div>
+
+        <!-- 適正範囲・センサーの説明 -->
+        <div class="ai-box">
+            <h3>この項目について</h3>
+            <p id="about-text">読み込んでいます...</p>
+        </div>
+
+        <!-- 直近の記録 -->
+        <h2>直近10件の記録</h2>
+        <div id="detail-logs">
+            <p style="color: rgba(255,255,255,0.85);">読み込んでいます...</p>
+        </div>
+
+        <!-- 一番下：ダッシュボードへ戻る（白いボタン） -->
+        <div class="footer-action">
+            <a href="/" class="btn btn-info btn-back-wide">ダッシュボードへ戻る</a>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='crop.js') }}"></script>
+    <script src="{{ url_for('static', filename='reference.js') }}"></script>
+    <script src="{{ url_for('static', filename='detail.js') }}"></script>
+</body>
+</html>

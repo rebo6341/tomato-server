@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="theme-color" content="#0ed9b4">
+    <title>ヨクソダテール | トマト神経衰弱</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <header class="page-header">
+            <h1>🃏 トマト神経衰弱</h1>
+        </header>
+
+        <div class="sub-info">
+            カードを2枚めくって同じ絵柄をそろえよう。全8ペアそろえたらクリア！
+        </div>
+
+        <div class="game-stage">
+            <div class="game-scoreboard">
+                <div class="game-score-item">
+                    <div class="game-score-label">めくった回数</div>
+                    <div class="game-score-value" id="turns">0</div>
+                </div>
+                <div class="game-score-item">
+                    <div class="game-score-label">そろった</div>
+                    <div class="game-score-value" id="pairs">0 / 8</div>
+                </div>
+                <div class="game-score-item">
+                    <div class="game-score-label">タイム</div>
+                    <div class="game-score-value" id="timer">0秒</div>
+                </div>
+            </div>
+
+            <div class="memory-grid" id="grid"></div>
+            <p class="game-message" id="message">カードをタップしてスタート！</p>
+
+            <div class="footer-action" style="margin-top: 14px;">
+                <button type="button" id="restart-btn" class="btn btn-success" style="flex:1 1 100%;">
+                    <span class="btn-label">🔄 もう一度あそぶ</span>
+                </button>
+            </div>
+        </div>
+
+        <div class="footer-action">
+            <a href="/games" class="btn btn-secondary" style="flex:1 1 100%;">← ミニゲーム一覧へ戻る</a>
+        </div>
+        <div class="footer-action">
+            <a href="/" class="btn btn-info btn-back-wide">ダッシュボードへ戻る</a>
+        </div>
+    </div>
+
+<script>
+(function () {
+    const FACES = ['🍅', '🌱', '💧', '☀️', '🌿', '🐝', '🪴', '🌡️'];
+    const grid = document.getElementById('grid');
+    const turnsEl = document.getElementById('turns');
+    const pairsEl = document.getElementById('pairs');
+    const timerEl = document.getElementById('timer');
+    const msgEl = document.getElementById('message');
+    const restartBtn = document.getElementById('restart-btn');
+
+    let deck = [];
+    let opened = [];
+    let matched = 0;
+    let turns = 0;
+    let lock = false;
+    let startTime = null;
+    let timerId = null;
+
+    function shuffle(arr) {
+        for (let i = arr.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [arr[i], arr[j]] = [arr[j], arr[i]];
+        }
+        return arr;
+    }
+
+    function startTimer() {
+        if (timerId) return;
+        startTime = Date.now();
+        timerId = setInterval(() => {
+            timerEl.textContent = Math.floor((Date.now() - startTime) / 1000) + '秒';
+        }, 500);
+    }
+
+    function stopTimer() {
+        if (timerId) clearInterval(timerId);
+        timerId = null;
+    }
+
+    function build() {
+        stopTimer();
+        deck = shuffle([...FACES, ...FACES]);
+        opened = [];
+        matched = 0;
+        turns = 0;
+        lock = false;
+        startTime = null;
+        turnsEl.textContent = '0';
+        pairsEl.textContent = '0 / 8';
+        timerEl.textContent = '0秒';
+        msgEl.textContent = 'カードをタップしてスタート！';
+
+        grid.innerHTML = '';
+        deck.forEach((face, index) => {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'memory-card';
+            btn.dataset.face = face;
+            btn.dataset.index = index;
+            btn.textContent = '❓';
+            btn.addEventListener('click', () => onFlip(btn));
+            grid.appendChild(btn);
+        });
+    }
+
+    function onFlip(btn) {
+        if (lock) return;
+        if (btn.classList.contains('is-open') || btn.classList.contains('is-matched')) return;
+
+        startTimer();
+        btn.classList.add('is-open');
+        btn.textContent = btn.dataset.face;
+        opened.push(btn);
+
+        if (opened.length < 2) return;
+
+        turns++;
+        turnsEl.textContent = turns;
+
+        const [a, b] = opened;
+        if (a.dataset.face === b.dataset.face) {
+            a.classList.add('is-matched');
+            b.classList.add('is-matched');
+            opened = [];
+            matched++;
+            pairsEl.textContent = `${matched} / 8`;
+            msgEl.textContent = 'そろった！ナイス🍅';
+
+            if (matched === FACES.length) {
+                stopTimer();
+                const sec = Math.floor((Date.now() - startTime) / 1000);
+                msgEl.textContent = `クリア！ ${turns}回・${sec}秒でした 🎉`;
+            }
+        } else {
+            lock = true;
+            msgEl.textContent = 'ちがった…もう一度！';
+            setTimeout(() => {
+                a.classList.remove('is-open');
+                b.classList.remove('is-open');
+                a.textContent = '❓';
+                b.textContent = '❓';
+                opened = [];
+                lock = false;
+            }, 750);
+        }
+    }
+
+    restartBtn.addEventListener('click', build);
+    build();
+})();
+</script>
+</body>
+</html>

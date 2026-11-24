@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="theme-color" content="#0ed9b4">
+    <title id="page-title-tag">ヨクソダテール | トマトのミニゲーム</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="apple-touch-icon" href="{{ url_for('static', filename='icon.png') }}">
+</head>
+<body>
+    <div class="container">
+        <header class="page-header">
+            <h1 id="games-page-heading">🎮 トマトのミニゲーム</h1>
+        </header>
+
+        <!-- 🌱 表示中の品目切替（ミニトマト/だいこん） -->
+        <div class="crop-switch-row">
+            <span class="crop-switch-label">表示中の品目</span>
+            <select id="crop-view-select" class="crop-select"></select>
+        </div>
+
+        <div class="sub-info">遊びたいゲームのアイコンをタップしてね。</div>
+
+        <div class="game-grid" id="tomato-game-grid">
+            <!-- 1. トマトキャッチ -->
+            <a href="/games/catch" class="game-tile">
+                <div class="game-tile-icon">
+                    <svg viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg">
+                        <circle cx="34" cy="26" r="13" fill="#ff5b52"/>
+                        <path d="M27 17 Q25 8 33 12 Q36 5 39 12 Q47 8 45 17 Z" fill="#4caf6b"/>
+                        <circle cx="76" cy="44" r="11" fill="#ff5b52"/>
+                        <path d="M70 37 Q68 29 75 32 Q77 26 80 32 Q87 29 85 37 Z" fill="#4caf6b"/>
+                        <path d="M28 82 L92 82 L82 106 L38 106 Z" fill="#e2a63b"/>
+                        <rect x="24" y="76" width="72" height="10" rx="5" fill="#b97f1c"/>
+                        <path d="M44 88 L50 100 M60 88 L60 100 M76 88 L70 100" stroke="#b97f1c" stroke-width="3" stroke-linecap="round"/>
+                    </svg>
+                </div>
+                <span class="game-tile-title">トマトキャッチ</span>
+            </a>
+
+            <!-- 2. トマト神経衰弱 -->
+            <a href="/games/memory" class="game-tile">
+                <div class="game-tile-icon">
+                    <svg viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg">
+                        <rect x="14" y="16" width="40" height="40" rx="8" fill="#22b573"/>
+                        <rect x="66" y="16" width="40" height="40" rx="8" fill="#ffffff"/>
+                        <circle cx="86" cy="38" r="13" fill="#ff5b52"/>
+                        <path d="M79 28 Q77 20 85 24 Q88 17 91 24 Q99 20 97 28 Z" fill="#4caf6b"/>
+                        <rect x="14" y="64" width="40" height="40" rx="8" fill="#ffffff"/>
+                        <circle cx="34" cy="86" r="13" fill="#ff5b52"/>
+                        <path d="M27 76 Q25 68 33 72 Q36 65 39 72 Q47 68 45 76 Z" fill="#4caf6b"/>
+                        <rect x="66" y="64" width="40" height="40" rx="8" fill="#22b573"/>
+                    </svg>
+                </div>
+                <span class="game-tile-title">トマト神経衰弱</span>
+            </a>
+
+            <!-- 3. トマトたたき -->
+            <a href="/games/whack" class="game-tile">
+                <div class="game-tile-icon">
+                    <svg viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg">
+                        <ellipse cx="60" cy="94" rx="42" ry="14" fill="#8a5a3b"/>
+                        <ellipse cx="60" cy="90" rx="30" ry="10" fill="#5d3b25"/>
+                        <circle cx="60" cy="66" r="26" fill="#ff5b52"/>
+                        <path d="M46 46 Q42 30 56 36 Q60 24 65 36 Q79 30 75 46 Z" fill="#4caf6b"/>
+                        <circle cx="51" cy="64" r="4.5" fill="#1a1a1a"/>
+                        <circle cx="69" cy="64" r="4.5" fill="#1a1a1a"/>
+                        <path d="M52 78 Q60 84 68 78" stroke="#1a1a1a" stroke-width="3" fill="none" stroke-linecap="round"/>
+                        <rect x="82" y="14" width="14" height="44" rx="6" fill="#131a2c" transform="rotate(24 89 36)"/>
+                        <rect x="70" y="6" width="38" height="20" rx="8" fill="#4f6672" transform="rotate(24 89 16)"/>
+                    </svg>
+                </div>
+                <span class="game-tile-title">トマトたたき</span>
+            </a>
+        </div>
+
+        <!-- 4. だいこんのミニゲーム（表示中の品目が「だいこん」のときだけ表示） -->
+        <div class="game-grid" id="daikon-game-grid" style="display:none;">
+            <!-- 4-1. ダイコンリズム -->
+            <a href="/games/rhythm" class="game-tile">
+                <div class="game-tile-icon">
+                    <svg viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M60 28 C78 28 87 50 83 73 C80 92 70 104 60 104 C50 104 40 92 37 73 C33 50 42 28 60 28 Z" fill="#ffffff" stroke="#d8e6e2" stroke-width="2"/>
+                        <path d="M60 28 Q52 12 40 16 Q38 6 48 8 Q50 0 56 8 Q64 2 64 12 Q72 6 72 16 Q80 12 78 22 Q68 20 60 28 Z" fill="#4caf6b"/>
+                        <circle cx="34" cy="110" r="6" fill="#22b573"/>
+                        <circle cx="52" cy="110" r="6" fill="#13b8c9"/>
+                        <circle cx="70" cy="110" r="6" fill="#1a8fe3"/>
+                        <circle cx="88" cy="110" r="6" fill="#b97f1c"/>
+                    </svg>
+                </div>
+                <span class="game-tile-title">ダイコンリズム</span>
+            </a>
+
+            <!-- 4-2. ダイコンファイターズ -->
+            <a href="/games/daikon" class="game-tile">
+                <div class="game-tile-icon">
+                    <svg viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M32 58 Q29 24 60 22 Q91 24 88 58 L84 100 Q80 126 60 129 Q40 126 36 100 Z" fill="#fbf8ef" stroke="#2a2016" stroke-width="3.2" stroke-linejoin="round"/>
+                        <ellipse cx="42" cy="20" rx="14" ry="20" fill="#3f9c5c" stroke="#2a2016" stroke-width="2.5" transform="rotate(-18 42 20)"/>
+                        <ellipse cx="60" cy="10" rx="15" ry="22" fill="#4caf6b" stroke="#2a2016" stroke-width="2.5"/>
+                        <ellipse cx="78" cy="18" rx="14" ry="20" fill="#3f9c5c" stroke="#2a2016" stroke-width="2.5" transform="rotate(16 78 18)"/>
+                        <circle cx="48" cy="68" r="5" fill="#2a2016"/>
+                        <circle cx="72" cy="68" r="5" fill="#2a2016"/>
+                        <path d="M40 60 L52 56" stroke="#2a2016" stroke-width="3" stroke-linecap="round"/>
+                        <path d="M68 56 L80 60" stroke="#2a2016" stroke-width="3" stroke-linecap="round"/>
+                        <path d="M50 84 Q60 78 70 84" stroke="#2a2016" stroke-width="3" fill="none" stroke-linecap="round"/>
+                    </svg>
+                </div>
+                <span class="game-tile-title">ダイコンファイターズ</span>
+            </a>
+        </div>
+
+        <!-- 一番下：ダッシュボードへ戻る（白いボタン） -->
+        <div class="footer-action">
+            <a href="/" class="btn btn-info btn-back-wide">ダッシュボードへ戻る</a>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='crop.js') }}"></script>
+    <script src="{{ url_for('static', filename='games.js') }}"></script>
+</body>
+</html>

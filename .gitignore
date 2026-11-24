@@ -1,19 +1,12 @@
-# 環境変数・APIキー
 .env
-
-# データベースファイル
+.env.*
 *.db
 *.sqlite3
-
-# Pythonのキャッシュ
+static/photos/
+*.log
+nohup.out
+*.backup
 __pycache__/
 *.pyc
-
-# VS Code などの設定
-.vscode/
-
-# ログ
-app.log
 venv/
-*.log
-.env
+.venv/

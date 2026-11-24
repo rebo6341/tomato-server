@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="theme-color" content="#0ed9b4">
+    <title>ヨクソダテール | トマトたたき</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <header class="page-header">
+            <h1>🔨 トマトたたき</h1>
+        </header>
+
+        <div class="sub-info">
+            30秒間、出てきた🍅をタップ！ 🐛（害虫）をタップすると −2点なので気をつけて。
+        </div>
+
+        <div class="game-stage">
+            <div class="game-scoreboard">
+                <div class="game-score-item">
+                    <div class="game-score-label">スコア</div>
+                    <div class="game-score-value" id="score">0</div>
+                </div>
+                <div class="game-score-item">
+                    <div class="game-score-label">のこり時間</div>
+                    <div class="game-score-value" id="time">30</div>
+                </div>
+                <div class="game-score-item">
+                    <div class="game-score-label">ハイスコア</div>
+                    <div class="game-score-value" id="best">0</div>
+                </div>
+            </div>
+
+            <div class="whack-grid" id="grid"></div>
+            <p class="game-message" id="message">スタートボタンを押してね</p>
+
+            <div class="footer-action" style="margin-top: 14px;">
+                <button type="button" id="start-btn" class="btn btn-success" style="flex:1 1 100%;">
+                    <span class="btn-label">▶ スタート</span>
+                </button>
+            </div>
+        </div>
+
+        <div class="footer-action">
+            <a href="/games" class="btn btn-secondary" style="flex:1 1 100%;">← ミニゲーム一覧へ戻る</a>
+        </div>
+        <div class="footer-action">
+            <a href="/" class="btn btn-info btn-back-wide">ダッシュボードへ戻る</a>
+        </div>
+    </div>
+
+<script>
+(function () {
+    const HOLES = 9;
+    const GAME_SECONDS = 30;
+
+    const grid = document.getElementById('grid');
+    const scoreEl = document.getElementById('score');
+    const timeEl = document.getElementById('time');
+    const bestEl = document.getElementById('best');
+    const msgEl = document.getElementById('message');
+    const startBtn = document.getElementById('start-btn');
+
+    let holes = [];
+    let score = 0;
+    let best = 0;
+    let remain = GAME_SECONDS;
+    let running = false;
+    let popTimer = null;
+    let countTimer = null;
+
+    for (let i = 0; i < HOLES; i++) {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'whack-hole';
+        b.textContent = '';
+        b.dataset.kind = '';
+        b.addEventListener('click', () => onHit(b));
+        grid.appendChild(b);
+        holes.push(b);
+    }
+
+    function clearHole(b) {
+        b.textContent = '';
+        b.dataset.kind = '';
+        b.classList.remove('is-up', 'is-bomb');
+    }
+
+    function pop() {
+        holes.forEach(clearHole);
+        const count = Math.random() < 0.35 ? 2 : 1;
+        const used = new Set();
+        for (let i = 0; i < count; i++) {
+            let idx = Math.floor(Math.random() * HOLES);
+            while (used.has(idx)) idx = Math.floor(Math.random() * HOLES);
+            used.add(idx);
+            const b = holes[idx];
+            const isBug = Math.random() < 0.28;
+            b.dataset.kind = isBug ? 'bug' : 'tomato';
+            b.textContent = isBug ? '🐛' : '🍅';
+            b.classList.add(isBug ? 'is-bomb' : 'is-up');
+        }
+    }
+
+    function onHit(b) {
+        if (!running || !b.dataset.kind) return;
+        if (b.dataset.kind === 'tomato') {
+            score += 1;
+            msgEl.textContent = 'ナイス！';
+        } else {
+            score = Math.max(0, score - 2);
+            msgEl.textContent = '害虫だ！ −2点…';
+        }
+        scoreEl.textContent = score;
+        clearHole(b);
+    }
+
+    function stop() {
+        running = false;
+        clearInterval(popTimer);
+        clearInterval(countTimer);
+        holes.forEach(clearHole);
+        best = Math.max(best, score);
+        bestEl.textContent = best;
+        msgEl.textContent = `終了！ スコア ${score} 点 🍅`;
+        startBtn.querySelector('.btn-label').textContent = '▶ もう一度あそぶ';
+    }
+
+    function start() {
+        if (running) return;
+        running = true;
+        score = 0;
+        remain = GAME_SECONDS;
+        scoreEl.textContent = '0';
+        timeEl.textContent = remain;
+        msgEl.textContent = '🍅をタップ！';
+        startBtn.querySelector('.btn-label').textContent = '▶ プレイ中...';
+
+        popTimer = setInterval(pop, 780);
+        pop();
+
+        countTimer = setInterval(() => {
+            remain--;
+            timeEl.textContent = remain;
+            if (remain <= 0) stop();
+        }, 1000);
+    }
+
+    startBtn.addEventListener('click', start);
+})();
+</script>
+</body>
+</html>

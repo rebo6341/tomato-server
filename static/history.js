@@ -1,78 +1,113 @@
-// history.html 専用処理
-let isAllDisplayed = false; // 現在全件表示しているかのフラグ
+// history.html 専用処理（ページング方式）
 
-function fetchHistory(limit = 20) {
-    fetch('/api/data')
-        .then(res => {
+const PAGE_SIZE = 20;
+let currentOffset = 0;
+let totalCount = 0;
+let dbName = 'local_sensor.db'; // サーバーから取得できなかった時の予備
+
+const tbody = document.getElementById('history-tbody');
+const btn = document.getElementById('load-more-btn');
+const dbInfoEl = document.getElementById('db-info');
+
+function renderRows(rows, { append }) {
+    let html = '';
+    rows.forEach((row) => {
+        html += `
+            <tr>
+                <td>${row.timestamp}</td>
+                <td>${row.temperature !== null ? row.temperature.toFixed(1) : '--'}</td>
+                <td>${row.humidity !== null ? row.humidity.toFixed(1) : '--'}</td>
+                <td>${row.soil_moisture !== null ? row.soil_moisture.toFixed(1) : '--'}</td>
+            </tr>
+        `;
+    });
+
+    if (append) {
+        tbody.insertAdjacentHTML('beforeend', html);
+    } else {
+        tbody.innerHTML = html || '<tr><td colspan="4" style="text-align: center;">データが存在しません。</td></tr>';
+    }
+}
+
+// ⑱ 「散水DB: 〇〇」で改行して「全○○件中○○件表示中」
+function updateDbInfo() {
+    if (!dbInfoEl) return;
+    dbInfoEl.textContent = `散水DB: ${dbName}\n全 ${totalCount} 件中 ${currentOffset} 件表示中`;
+}
+
+function updateButtonState() {
+    updateDbInfo();
+
+    if (currentOffset >= totalCount) {
+        btn.textContent = `全 ${totalCount} 件を表示中`;
+        btn.disabled = true;
+    } else {
+        btn.textContent = `さらに ${PAGE_SIZE} 件読み込む（残り ${totalCount - currentOffset} 件）`;
+        btn.disabled = false;
+    }
+}
+
+function fetchNextPage() {
+    btn.disabled = true;
+    btn.textContent = '読み込み中...';
+
+    const viewCrop = window.CropSwitcher ? window.CropSwitcher.getViewCrop() : 'tomato';
+    const baseUrl = `/api/data/page?limit=${PAGE_SIZE}&offset=${currentOffset}`;
+    const url = window.CropSwitcher ? window.CropSwitcher.withCrop(baseUrl, viewCrop) : baseUrl;
+
+    fetch(url)
+        .then((res) => {
             if (!res.ok) throw new Error('ネットワーク応答が正常ではありません');
             return res.json();
         })
-        .then(allData => {
-            const totalCount = allData.length;
-            const tbody = document.getElementById('history-tbody');
-            
-            // 表示件数の切り出し（指定件数分 または 全件）
-            const displayData = limit ? allData.slice(0, limit) : allData;
-            
-            // 件数テキストの更新
-            document.getElementById('total-count').textContent = totalCount;
-            document.getElementById('log-count').textContent = displayData.length;
+        .then(({ total, rows, db_name }) => {
+            totalCount = total;
+            if (db_name) dbName = db_name;
 
-            // ボタン表示と状態の更新
-            const btn = document.getElementById('load-all-btn');
-            btn.disabled = false; // 常に押せる状態にする
+            const isFirstLoad = currentOffset === 0;
+            renderRows(rows, { append: !isFirstLoad });
 
-            if (limit !== null && displayData.length < totalCount) {
-                // 20件表示中の時
-                btn.textContent = `全 ${totalCount} 件のデータベースをすべて表示する`;
-                isAllDisplayed = false;
-            } else {
-                // 全件表示中の時
-                btn.textContent = `全 ${totalCount} 件を表示中`;
-                isAllDisplayed = true;
+            currentOffset += rows.length;
+            updateButtonState();
+
+            // データが1件も無い場合は "さらに読み込む" ボタンを隠す
+            if (totalCount === 0) {
+                btn.style.display = 'none';
             }
-
-            // データが空の場合
-            if (displayData.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="4" style="text-align: center;">データが存在しません。</td></tr>';
-                return;
-            }
-
-            // テーブル描画処理
-            let html = '';
-            displayData.forEach(row => {
-                html += `
-                    <tr>
-                        <td>${row.timestamp}</td>
-                        <td>${row.temperature !== null ? row.temperature.toFixed(1) : '--'}</td>
-                        <td>${row.humidity !== null ? row.humidity.toFixed(1) : '--'}</td>
-                        <td>${row.soil_moisture !== null ? row.soil_moisture.toFixed(1) : '--'}</td>
-                    </tr>
-                `;
-            });
-            tbody.innerHTML = html;
         })
-        .catch(err => {
+        .catch((err) => {
             console.error('データ取得エラー:', err);
-            const tbody = document.getElementById('history-tbody');
-            if (tbody) {
+            if (currentOffset === 0) {
                 tbody.innerHTML = '<tr><td colspan="4" style="text-align: center; color: #ff6b6b;">データの取得に失敗しました。</td></tr>';
             }
+            btn.textContent = '読み込みに失敗しました（タップして再試行）';
+            btn.disabled = false;
         });
 }
 
-// 初期表示（最新20件）
-fetchHistory(20);
+function resetAndReload() {
+    currentOffset = 0;
+    totalCount = 0;
+    btn.style.display = '';
+    tbody.innerHTML = '<tr><td colspan="4" style="text-align: center;">データを読み込んでいます...</td></tr>';
+    fetchNextPage();
+}
 
-// ボタン押下で全件表示 ⇔ 20件表示を切り替え
-document.getElementById('load-all-btn').addEventListener('click', function() {
-    this.textContent = '読み込み中...';
-    
-    if (isAllDisplayed) {
-        // 全件表示中に押されたら 20件表示に戻す
-        fetchHistory(20);
-    } else {
-        // 20件表示中に押されたら 全件表示にする
-        fetchHistory(null);
-    }
-});
+// 🌱 表示中の品目切替ドロップダウンの初期化
+const cropViewSelect = document.getElementById('crop-view-select');
+if (window.CropSwitcher) {
+    window.CropSwitcher.initViewSwitcher(cropViewSelect, () => {
+        resetAndReload();
+    }).then(() => {
+        // 初期表示（最初の20件）
+        updateDbInfo();
+        fetchNextPage();
+    });
+} else {
+    // 初期表示（最初の20件）
+    updateDbInfo();
+    fetchNextPage();
+}
+
+// ボタン押下で次の20件を追加読み込み
+btn.addEventListener('click', fetchNextPage);

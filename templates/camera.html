@@ -1,15 +1,318 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
     <meta charset="UTF-8">
-    <title>カメラモニター</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#0ed9b4">
+    <title>ヨクソダテール | カメラモニター</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <script src="{{ url_for('static', filename='crop.js') }}"></script>
+    <style>
+        .camera-stream-wrapper {
+            width: 100%;
+            max-width: 640px;
+            /* 固定の高さ(min-height)ではなく、Pi側の配信解像度(640x360=16:9)に
+               合わせた縦横比を指定する。画面幅が変わっても常にぴったり収まり、
+               上下の黒い余白が出なくなる。
+               ※ cam_server.py の FRAME_WIDTH/FRAME_HEIGHT を変更した場合は
+                  ここの数値も合わせて変更してください。 */
+            aspect-ratio: 16 / 9;
+            margin: 20px auto;
+            background-color: #000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 8px;
+            overflow: hidden;
+            position: relative;
+        }
+        .camera-feed {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+        }
+        .viewer-badge {
+            font-size: 0.78rem;
+            padding: 6px 14px;
+        }
+        .camera-action {
+            text-align: center;
+            margin: 20px 0;
+        }
+        .camera-action-status {
+            margin-top: 10px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            min-height: 1.2em;
+        }
+        .photo-gallery {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+        .photo-item {
+            background: var(--mint-card);
+            border-radius: var(--radius-md);
+            box-shadow: var(--shadow-card);
+            overflow: hidden;
+            position: relative;
+        }
+        .photo-item img {
+            width: 100%;
+            height: 110px;
+            object-fit: cover;
+            display: block;
+        }
+        .photo-item-info {
+            padding: 8px 10px;
+            font-size: 0.72rem;
+            color: var(--ink);
+            line-height: 1.4;
+        }
+        .photo-delete-btn {
+            position: absolute;
+            top: 6px;
+            right: 6px;
+            background: rgba(0,0,0,0.55);
+            color: #fff;
+            border: none;
+            border-radius: 50%;
+            width: 26px;
+            height: 26px;
+            font-size: 0.85rem;
+            cursor: pointer;
+            line-height: 1;
+        }
+    </style>
 </head>
 <body>
-    <div class="container">
-        <h1>📷 リアルタイムカメラ映像</h1>
-        <p>ここにカメラ映像が表示されます。</p>
-        <a href="/" class="btn btn-secondary">ダッシュボードへ戻る</a>
+    <div class="container container-large">
+        <div class="header-status">
+            <h1><img src="/static/icon_camera.png" alt="" class="heading-icon"> リアルタイムカメラ映像</h1>
+            <div id="viewer-badge" class="status-badge online viewer-badge">👀 0人視聴中</div>
+        </div>
+
+        {# 【仕様変更 2026-11-16】現在の栽培品目の切替を廃止（撮影はダイコン固定）
+        <div class="crop-switch-row">
+            <span class="crop-switch-label">現在の栽培品目（撮影対象）</span>
+            <select id="current-crop-select" class="crop-select"></select>
+        </div>
+        <p id="current-crop-status" class="camera-action-status" style="margin: 0 4px 10px; text-align:left;"></p>
+        #}
+
+        <div class="camera-stream-wrapper">
+            <img id="camera-feed" class="camera-feed"
+                src="{{ url_for('video_feed') }}"
+                alt="カメラリアルタイム映像">
+        </div>
+
+        <!-- 撮影ボタン（背景なし・ボタン自体の表示だけで状態を伝える） -->
+        <div class="camera-action">
+            <button id="snapshot-btn" class="btn btn-success" style="width:100%;">
+                📸 写真を撮る
+            </button>
+            <p id="snapshot-status" class="camera-action-status"></p>
+        </div>
+
+        <!-- 撮影した写真の一覧 -->
+        <h2>撮影した写真</h2>
+        <div id="photo-gallery" class="photo-gallery">
+            <p style="color: rgba(255,255,255,0.85);">読み込んでいます...</p>
+        </div>
+
+        <div class="footer-action">
+            <a href="/" class="btn btn-secondary">ダッシュボードへ戻る</a>
+        </div>
     </div>
+
+    <script>
+        const socket = io();
+        const galleryDiv = document.getElementById('photo-gallery');
+        const snapshotBtn = document.getElementById('snapshot-btn');
+        const snapshotStatus = document.getElementById('snapshot-status');
+        const viewerBadge = document.getElementById('viewer-badge');
+
+        // 【仕様変更 2026-11-16】現在の栽培品目の切替を廃止（撮影・ギャラリーはダイコン固定）
+        // const currentCropSelect = document.getElementById('current-crop-select');
+        // const currentCropStatus = document.getElementById('current-crop-status');
+        // const CROP_LABELS_FALLBACK = { tomato: 'ミニトマト', daikon: 'ダイコン' };
+        //
+        // function getCropLabels() {
+        //     return (window.CropSwitcher && window.CropSwitcher.LABELS) || CROP_LABELS_FALLBACK;
+        // }
+        //
+        // function renderCurrentCropSelect(selected) {
+        //     if (!currentCropSelect) return;
+        //     const labels = getCropLabels();
+        //     currentCropSelect.innerHTML = '';
+        //     Object.keys(labels).forEach((crop) => {
+        //         const opt = document.createElement('option');
+        //         opt.value = crop;
+        //         opt.textContent = labels[crop];
+        //         if (crop === selected) opt.selected = true;
+        //         currentCropSelect.appendChild(opt);
+        //     });
+        //     if (window.CropSwitcher && window.CropSwitcher.applyIcon) window.CropSwitcher.applyIcon(currentCropSelect);
+        // }
+        //
+        // function fetchCurrentCrop() {
+        //     if (!currentCropSelect) return;
+        //     fetch('/api/crop/current')
+        //         .then((res) => res.json())
+        //         .then((data) => renderCurrentCropSelect(data.crop))
+        //         .catch(() => renderCurrentCropSelect('tomato'));
+        // }
+        //
+        // if (currentCropSelect) {
+        //     currentCropSelect.addEventListener('change', () => {
+        //         const newCrop = currentCropSelect.value;
+        //         const labels = getCropLabels();
+        //         const confirmed = confirm(
+        //             `品目を「${labels[newCrop] || newCrop}」に切り替えますか？\n` +
+        //             '以後、センサーデータの書き込み先と撮影・ギャラリーの対象がこちらに変わります。'
+        //         );
+        //         if (!confirmed) {
+        //             fetchCurrentCrop();
+        //             return;
+        //         }
+        //
+        //         currentCropSelect.disabled = true;
+        //         fetch('/api/crop/current', {
+        //             method: 'POST',
+        //             headers: { 'Content-Type': 'application/json' },
+        //             body: JSON.stringify({ crop: newCrop }),
+        //         })
+        //             .then((res) => res.json().then((data) => ({ ok: res.ok, data })))
+        //             .then(({ ok, data }) => {
+        //                 if (ok) {
+        //                     currentCropStatus.innerText = `切り替えました: ${data.label}`;
+        //                     currentCropStatus.style.color = '#2e7d32';
+        //                     fetchGallery();
+        //                 } else {
+        //                     currentCropStatus.innerText = `エラー: ${data.message || '切替に失敗しました。'}`;
+        //                     currentCropStatus.style.color = '#ffdada';
+        //                     fetchCurrentCrop();
+        //                 }
+        //             })
+        //             .catch((err) => {
+        //                 console.error('現在の栽培品目切替エラー:', err);
+        //                 currentCropStatus.innerText = '通信エラーが発生しました。';
+        //                 currentCropStatus.style.color = '#ffdada';
+        //                 fetchCurrentCrop();
+        //             })
+        //             .finally(() => {
+        //                 currentCropSelect.disabled = false;
+        //             });
+        //     });
+        // }
+        //
+        // socket.on('current_crop_updated', (data) => {
+        //     renderCurrentCropSelect(data.crop);
+        //     fetchGallery();
+        // });
+
+        // --------------------------------------------------
+        // 👀 同時視聴者数の表示
+        // --------------------------------------------------
+        function updateViewerBadge(count) {
+            if (!viewerBadge) return;
+            viewerBadge.textContent = `👀 ${count}人視聴中`;
+        }
+
+        function fetchViewerCount() {
+            fetch('/api/camera/viewers')
+                .then((res) => res.json())
+                .then((data) => updateViewerBadge(data.count))
+                .catch((err) => console.error('視聴者数取得エラー:', err));
+        }
+
+        // 他の端末の入退室があるたびにリアルタイムで反映
+        socket.on('camera_viewer_count', (data) => updateViewerBadge(data.count));
+
+        function fetchGallery() {
+            fetch('/api/camera/photos')
+                .then((res) => res.json())
+                .then((photos) => {
+                    if (!photos || photos.length === 0) {
+                        galleryDiv.innerHTML = '<p style="color: rgba(255,255,255,0.85);">まだ写真がありません。</p>';
+                        return;
+                    }
+
+                    let html = '';
+                    photos.forEach((p) => {
+                        html += `
+                            <div class="photo-item">
+                                <button class="photo-delete-btn" data-id="${p.id}">✕</button>
+                                <img src="${p.url}" alt="撮影写真" loading="lazy">
+                                <div class="photo-item-info">${p.captured_at}</div>
+                            </div>
+                        `;
+                    });
+                    galleryDiv.innerHTML = html;
+
+                    document.querySelectorAll('.photo-delete-btn').forEach((btn) => {
+                        btn.addEventListener('click', () => deletePhoto(btn.dataset.id));
+                    });
+                })
+                .catch((err) => {
+                    console.error('写真一覧取得エラー:', err);
+                    galleryDiv.innerHTML = '<p style="color: #ff6b6b;">写真一覧の取得に失敗しました。</p>';
+                });
+        }
+
+        function deletePhoto(id) {
+            if (!confirm('この写真を削除しますか？')) return;
+            fetch(`/api/camera/photos/${id}`, { method: 'DELETE' })
+                .then((res) => res.json())
+                .then(() => fetchGallery())
+                .catch((err) => console.error('写真削除エラー:', err));
+        }
+
+        const SNAPSHOT_DEFAULT_LABEL = '📸 写真を撮る';
+
+        function resetSnapshotButton() {
+            snapshotBtn.disabled = false;
+            snapshotBtn.innerText = SNAPSHOT_DEFAULT_LABEL;
+        }
+
+        snapshotBtn.addEventListener('click', async () => {
+            snapshotBtn.disabled = true;
+            snapshotBtn.innerText = '📸 撮影中...';
+            snapshotStatus.innerText = '';
+
+            try {
+                const res = await fetch('/api/camera/snapshot', { method: 'POST' });
+                const data = await res.json();
+
+                if (res.ok) {
+                    // ボタン自体の表示を「保存しました」に切り替え、
+                    // 少し待ってから元の「写真を撮る」に戻す
+                    snapshotBtn.innerText = '✅ 保存しました';
+                    fetchGallery();
+                    setTimeout(resetSnapshotButton, 1500);
+                } else {
+                    snapshotStatus.innerText = `エラー: ${data.message || '撮影に失敗しました。'}`;
+                    snapshotStatus.style.color = '#ffdada';
+                    resetSnapshotButton();
+                }
+            } catch (err) {
+                console.error('撮影エラー:', err);
+                snapshotStatus.innerText = '通信エラーが発生しました。';
+                snapshotStatus.style.color = '#ffdada';
+                resetSnapshotButton();
+            }
+        });
+
+        // 他の端末で撮影/削除された場合もリアルタイムで反映
+        socket.on('photo_gallery_updated', fetchGallery);
+
+        // 初期表示
+        fetchGallery();
+        fetchViewerCount();
+        // fetchCurrentCrop(); // 【仕様変更 2026-11-16】品目切替を廃止
+    </script>
 </body>
 </html>

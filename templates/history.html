@@ -2,20 +2,26 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>データベース ログ閲覧画面</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="theme-color" content="#0ed9b4">
+    <title>ヨクソダテール | 履歴ログ</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
     <div class="container container-large">
-        <header class="header-status">
-            <h1>📊 データベース ログ閲覧画面</h1>
-            <a href="/" class="btn btn-success">トップ画面へ戻る</a>
+        <!-- ⑯ 戻るボタンは一番下へ移動したので、ここは見出しだけ -->
+        <header class="history-header">
+            <h1><img src="/static/icon_history.png" alt="" class="heading-icon"> データベース ログ閲覧画面</h1>
         </header>
 
-        <div class="sub-info">
-            参照DB: ローカルデータベース (SQLite) | 全 <span id="total-count">0</span> 件中 <span id="log-count">0</span> 件表示中
+        <!-- 🌱 表示中の品目切替（ミニトマト/だいこん） -->
+        <div class="crop-switch-row">
+            <span class="crop-switch-label">表示中の品目</span>
+            <select id="crop-view-select" class="crop-select"></select>
         </div>
+
+        <!-- ⑱ 「散水DB: (DB名)」 → 改行 → 「全○○件中○○件表示中」 -->
+        <div class="sub-info db-info" id="db-info">読み込んでいます...</div>
 
         <!-- ログテーブル -->
         <div class="table-wrapper">
@@ -25,7 +31,7 @@
                         <th>日時</th>
                         <th>気温 (℃)</th>
                         <th>湿度 (%)</th>
-                        <th>土壌水分量 (%)</th>
+                        <th>土壌湿度 (%)</th>
                     </tr>
                 </thead>
                 <tbody id="history-tbody">
@@ -34,12 +40,18 @@
             </table>
         </div>
 
-        <!-- 全件読み込み / 20件に戻す 切替ボタン -->
+        <!-- さらに読み込む ボタン -->
         <div class="footer-action">
-            <button id="load-all-btn" class="btn btn-success">データを読み込んでいます...</button>
+            <button type="button" id="load-more-btn" class="btn btn-success" style="flex:1 1 100%;">データを読み込んでいます...</button>
+        </div>
+
+        <!-- ⑯ ダッシュボードへ戻る（白いボタン）を画面下部へ -->
+        <div class="footer-action">
+            <a href="/" class="btn btn-info btn-back-wide">ダッシュボードへ戻る</a>
         </div>
     </div>
 
+    <script src="{{ url_for('static', filename='crop.js') }}"></script>
     <script src="{{ url_for('static', filename='history.js') }}"></script>
 </body>
 </html>

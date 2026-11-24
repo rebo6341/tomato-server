@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="theme-color" content="#0ed9b4">
+    <title>ヨクソダテール | トマトキャッチ</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <header class="page-header">
+            <h1>🧺 トマトキャッチ</h1>
+        </header>
+
+        <div class="sub-info">
+            カゴを左右に動かして、落ちてくるトマトをキャッチ！<br>
+            緑のトマト（未熟）を取るとミスになるので注意。ミス3回で終了です。
+        </div>
+
+        <div class="game-stage">
+            <div class="game-scoreboard">
+                <div class="game-score-item">
+                    <div class="game-score-label">スコア</div>
+                    <div class="game-score-value" id="score">0</div>
+                </div>
+                <div class="game-score-item">
+                    <div class="game-score-label">ミス</div>
+                    <div class="game-score-value" id="miss">0</div>
+                </div>
+                <div class="game-score-item">
+                    <div class="game-score-label">ハイスコア</div>
+                    <div class="game-score-value" id="best">0</div>
+                </div>
+            </div>
+
+            <canvas id="stage" class="game-canvas" width="360" height="440"></canvas>
+            <p class="game-message" id="message">画面をタップ／スペースキーでスタート</p>
+
+            <div class="footer-action" style="margin-top: 14px;">
+                <button type="button" id="restart-btn" class="btn btn-success" style="flex:1 1 100%;">
+                    <span class="btn-label">▶ スタート / もう一度</span>
+                </button>
+            </div>
+        </div>
+
+        <div class="footer-action">
+            <a href="/games" class="btn btn-secondary" style="flex:1 1 100%;">← ミニゲーム一覧へ戻る</a>
+        </div>
+        <div class="footer-action">
+            <a href="/" class="btn btn-info btn-back-wide">ダッシュボードへ戻る</a>
+        </div>
+    </div>
+
+<script>
+(function () {
+    const canvas = document.getElementById('stage');
+    const ctx = canvas.getContext('2d');
+    const W = canvas.width;
+    const H = canvas.height;
+
+    const scoreEl = document.getElementById('score');
+    const missEl = document.getElementById('miss');
+    const bestEl = document.getElementById('best');
+    const msgEl = document.getElementById('message');
+    const restartBtn = document.getElementById('restart-btn');
+
+    let basketX = W / 2;
+    const basketW = 78;
+    const basketH = 26;
+    const basketY = H - 46;
+
+    let items = [];
+    let score = 0;
+    let miss = 0;
+    let best = 0;
+    let running = false;
+    let spawnTimer = 0;
+    let speedBase = 1.7;
+    let lastTime = 0;
+
+    function reset() {
+        items = [];
+        score = 0;
+        miss = 0;
+        speedBase = 1.7;
+        spawnTimer = 0;
+        scoreEl.textContent = '0';
+        missEl.textContent = '0';
+        running = true;
+        msgEl.textContent = 'カゴを動かしてキャッチ！';
+        lastTime = performance.now();
+        requestAnimationFrame(loop);
+    }
+
+    function spawn() {
+        const isBad = Math.random() < 0.25;
+        items.push({
+            x: 24 + Math.random() * (W - 48),
+            y: -20,
+            r: 15,
+            vy: speedBase + Math.random() * 1.4,
+            bad: isBad,
+        });
+    }
+
+    function drawTomato(x, y, r, bad) {
+        ctx.beginPath();
+        ctx.fillStyle = bad ? '#7cb342' : '#ff5b52';
+        ctx.ellipse(x, y, r, r * 0.92, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.beginPath();
+        ctx.fillStyle = '#3f9b5c';
+        ctx.moveTo(x - r * 0.55, y - r * 0.72);
+        ctx.quadraticCurveTo(x, y - r * 1.7, x + r * 0.55, y - r * 0.72);
+        ctx.quadraticCurveTo(x, y - r * 0.5, x - r * 0.55, y - r * 0.72);
+        ctx.fill();
+
+        ctx.beginPath();
+        ctx.fillStyle = 'rgba(255,255,255,0.45)';
+        ctx.ellipse(x - r * 0.35, y - r * 0.25, r * 0.28, r * 0.18, -0.5, 0, Math.PI * 2);
+        ctx.fill();
+    }
+
+    function drawBasket() {
+        const x = basketX - basketW / 2;
+        ctx.fillStyle = '#b97f1c';
+        ctx.fillRect(x, basketY, basketW, 8);
+        ctx.beginPath();
+        ctx.fillStyle = '#e2a63b';
+        ctx.moveTo(x, basketY + 8);
+        ctx.lineTo(x + basketW, basketY + 8);
+        ctx.lineTo(x + basketW - 12, basketY + basketH + 8);
+        ctx.lineTo(x + 12, basketY + basketH + 8);
+        ctx.closePath();
+        ctx.fill();
+    }
+
+    function loop(now) {
+        const dt = Math.min(40, now - lastTime) / 16.67;
+        lastTime = now;
+
+        ctx.clearRect(0, 0, W, H);
+        ctx.fillStyle = '#eafaf3';
+        ctx.fillRect(0, 0, W, H);
+
+        // 地面
+        ctx.fillStyle = '#d7f0e5';
+        ctx.fillRect(0, H - 14, W, 14);
+
+        if (running) {
+            spawnTimer += dt;
+            if (spawnTimer > 42) {
+                spawnTimer = 0;
+                spawn();
+            }
+        }
+
+        for (let i = items.length - 1; i >= 0; i--) {
+            const it = items[i];
+            if (running) it.y += it.vy * dt;
+            drawTomato(it.x, it.y, it.r, it.bad);
+
+            const hitY = it.y + it.r >= basketY && it.y - it.r <= basketY + basketH;
+            const hitX = Math.abs(it.x - basketX) <= basketW / 2 + it.r * 0.5;
+
+            if (hitY && hitX) {
+                items.splice(i, 1);
+                if (it.bad) {
+                    miss++;
+                    missEl.textContent = miss;
+                    msgEl.textContent = '未熟なトマトはダメ！';
+                } else {
+                    score++;
+                    scoreEl.textContent = score;
+                    speedBase = 1.7 + score * 0.045;
+                }
+            } else if (it.y - it.r > H) {
+                items.splice(i, 1);
+                if (!it.bad) {
+                    miss++;
+                    missEl.textContent = miss;
+                    msgEl.textContent = 'トマトを落としちゃった…';
+                }
+            }
+        }
+
+        drawBasket();
+
+        if (running && miss >= 3) {
+            running = false;
+            best = Math.max(best, score);
+            bestEl.textContent = best;
+            msgEl.textContent = `ゲームオーバー！ スコア ${score} 点`;
+        }
+
+        if (running) requestAnimationFrame(loop);
+    }
+
+    function moveTo(clientX) {
+        const rect = canvas.getBoundingClientRect();
+        const ratio = W / rect.width;
+        basketX = Math.max(basketW / 2, Math.min(W - basketW / 2, (clientX - rect.left) * ratio));
+        if (!running) {
+            ctx.clearRect(0, 0, W, H);
+            ctx.fillStyle = '#eafaf3';
+            ctx.fillRect(0, 0, W, H);
+            drawBasket();
+        }
+    }
+
+    canvas.addEventListener('mousemove', (e) => moveTo(e.clientX));
+    canvas.addEventListener('touchstart', (e) => { moveTo(e.touches[0].clientX); e.preventDefault(); }, { passive: false });
+    canvas.addEventListener('touchmove', (e) => { moveTo(e.touches[0].clientX); e.preventDefault(); }, { passive: false });
+
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'ArrowLeft') basketX = Math.max(basketW / 2, basketX - 24);
+        if (e.key === 'ArrowRight') basketX = Math.min(W - basketW / 2, basketX + 24);
+        if (e.key === ' ' && !running) { e.preventDefault(); reset(); }
+    });
+
+    restartBtn.addEventListener('click', reset);
+    canvas.addEventListener('click', () => { if (!running) reset(); });
+
+    // 初期描画
+    ctx.fillStyle = '#eafaf3';
+    ctx.fillRect(0, 0, W, H);
+    drawBasket();
+})();
+</script>
+</body>
+</html>

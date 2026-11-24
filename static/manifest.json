@@ -1,10 +1,10 @@
 {
-  "name": "トマト監視システム",
-  "short_name": "トマト監視",
+  "name": "ヨクソダテール",
+  "short_name": "ヨクソダテール",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#121212",
-  "theme_color": "#4CAF50",
+  "background_color": "#0ed9b4",
+  "theme_color": "#0ed9b4",
   "icons": [
     {
       "src": "/static/icon.png",

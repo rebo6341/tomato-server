@@ -1,15 +1,96 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
     <meta charset="UTF-8">
-    <title>散水コントロール</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="theme-color" content="#0ed9b4">
+    <title>ヨクソダテール | 散水コントロール</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
     <div class="container">
-        <h1>💧 散水コントロール</h1>
-        <p>ここに散水実行ボタンなどを配置します。</p>
-        <a href="/" class="btn btn-info">ダッシュボードへ戻る</a>
+        <!-- ⑭ 見出しの余白・字間を少し広げて窮屈さを解消 -->
+        <header class="page-header">
+            <h1><img src="/static/icon_watering.png" alt="" class="heading-icon"> 散水コントロール</h1>
+            <!-- ラズパイ本体に接続できるかで判定（センサーの送信状況とは別） -->
+            <div id="water-pi-status-badge" class="status-badge offline" style="margin-left:auto;">○ ラズパイ: 判定中</div>
+        </header>
+
+        {# 【仕様変更 2026-11-16】現在の栽培品目の切替を廃止（散水記録はダイコン固定）
+        <div class="crop-switch-row">
+            <span class="crop-switch-label">現在の栽培品目（散水対象）</span>
+            <select id="current-crop-select" class="crop-select"></select>
+        </div>
+        <p id="current-crop-status" class="water-add-status" style="margin: 0 4px 10px;"></p>
+        #}
+
+        <!-- 今すぐ散水 -->
+        <div class="ai-box">
+            <h3>今すぐ散水する</h3>
+            <p id="water-now-status">ボタンを押すと、約30秒間散水します。</p>
+            <!-- ⑮ エラー文は折り返す専用ボックスに出す -->
+            <p id="water-now-error" class="error-text"></p>
+            <button type="button" id="water-now-btn" class="btn btn-success" style="width:100%; margin-top: 10px;">
+                <span class="btn-label">💧 今すぐ散水する</span>
+            </button>
+        </div>
+
+        <!-- 毎朝の固定自動散水 -->
+        <div class="ai-box">
+            <h3><img src="/static/icon_clock.png" alt="" class="heading-icon"> 固定自動散水</h3>
+            <p id="daily-water-status">読み込んでいます...</p>
+            <label class="water-form-label" style="display:flex; align-items:center; gap:8px; margin-top:14px; cursor:pointer;">
+                <input type="checkbox" id="daily-water-enabled-input" style="transform: scale(1.2); accent-color: var(--green-dark); cursor:pointer;">
+                有効にする
+            </label>
+            <label class="water-form-label">
+                実行時刻
+                <input type="time" id="daily-water-time-input" class="water-form-input">
+            </label>
+            <button type="button" id="daily-water-save-btn" class="btn btn-info" style="width:100%; margin-top: 10px;">
+                <span class="btn-label">保存する</span>
+            </button>
+            <p id="daily-water-save-status" class="water-add-status"></p>
+        </div>
+
+        {# 【仕様変更 2026-11-16】予約散水を廃止
+        <div class="ai-box">
+            <h3>予約を追加</h3>
+            <div class="water-form">
+                <label class="water-form-label">
+                    日付
+                    <input type="date" id="water-date-input" class="water-form-input">
+                </label>
+                <label class="water-form-label">
+                    時刻
+                    <input type="time" id="water-time-input" class="water-form-input">
+                </label>
+                <button type="button" id="water-add-btn" class="btn btn-info" style="width:100%; margin-top: 8px;">
+                    <span class="btn-label">＋ 予約を追加する</span>
+                </button>
+            </div>
+            <p id="water-add-status" class="water-add-status"></p>
+        </div>
+
+        <h2>予約中の散水</h2>
+        <div id="water-schedule-list">
+            <p style="color: rgba(255,255,255,0.85);">読み込んでいます...</p>
+        </div>
+        #}
+
+        <!-- 実行履歴（本当に実行されたかどうかの確認用） -->
+        <h2>実行履歴（最新5件）</h2>
+        <div id="water-history-list">
+            <p style="color: rgba(255,255,255,0.85);">読み込んでいます...</p>
+        </div>
+
+        <div class="action-area footer-action">
+            <a href="/" class="btn btn-success btn-back-wide btn-back-green">ダッシュボードへ戻る</a>
+        </div>
     </div>
+
+    <script src="{{ url_for('static', filename='crop.js') }}"></script>
+    <script src="{{ url_for('static', filename='watering.js') }}"></script>
 </body>
 </html>

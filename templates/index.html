@@ -3,8 +3,9 @@
 <head>
     <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>トマト栽培 ステータスインサイト</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="theme-color" content="#0ed9b4">
+    <title>ヨクソダテール | 観察ダッシュボード</title>
     <!-- PWA Manifest -->
     <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
     <link rel="apple-touch-icon" href="{{ url_for('static', filename='icon.png') }}">
@@ -14,70 +15,182 @@
     <div class="container">
         <!-- 1. ヘッダーエリア -->
         <header class="header-status">
-            <h1>🍅 トマト監視 ダッシュボード</h1>
-            <div id="network-status" class="status-badge offline">● オフライン (判定中)</div>
+            <div class="header-title">
+                <svg class="mascot-icon" id="header-mascot-icon" viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg">
+                    <ellipse cx="60" cy="70" rx="46" ry="40" fill="#ff5b52"/>
+                    <ellipse cx="42" cy="56" rx="10" ry="7" fill="#ff9089" opacity="0.55"/>
+                    <path d="M45 34 Q40 12 55 20 Q60 6 65 20 Q80 10 75 34 Z" fill="#4caf6b"/>
+                    <circle cx="45" cy="68" r="5" fill="#1a1a1a"/>
+                    <circle cx="75" cy="68" r="5" fill="#1a1a1a"/>
+                    <circle cx="46.5" cy="66" r="1.6" fill="#fff"/>
+                    <circle cx="76.5" cy="66" r="1.6" fill="#fff"/>
+                    <path d="M48 82 Q60 91 72 82" stroke="#1a1a1a" stroke-width="3.2" fill="none" stroke-linecap="round"/>
+                </svg>
+                <div class="header-title-text">
+                    <h1>ヨクソダテール</h1>
+                    <span class="app-tagline" id="app-tagline">観察ダッシュボード</span>
+                </div>
+            </div>
+            <!-- 【仕様変更 2026-11-16】オンライン表示は下の3つ（ラズパイ/センサー/カメラ）に分けた -->
+            {# <div id="network-status" class="status-badge offline">● オフライン (判定中)</div> #}
         </header>
+
+        <!-- 1.1 🔌 オンライン状態（ラズパイ本体 / センサー / カメラ） -->
+        <div class="device-status-row" style="display:flex; flex-wrap:wrap; gap:6px; justify-content:flex-end; margin: 0 0 12px;">
+            <span id="status-pi" class="status-badge offline">ラズパイ: 判定中</span>
+            <span id="status-sensor" class="status-badge offline">センサー: 判定中</span>
+            <span id="status-camera" class="status-badge offline">カメラ: 判定中</span>
+        </div>
+
+        <!-- 1.2 上部：各画面へのボタン（最下部にも同じものを配置） -->
+        <div class="footer-action top-action">
+            <a href="/camera" class="btn btn-secondary"><img src="/static/icon_camera.png" alt="" class="btn-icon"> カメラ映像</a>
+            <a href="/watering" class="btn btn-success"><img src="/static/icon_watering.png" alt="" class="btn-icon"> 散水実行</a>
+            <a href="/history" class="btn btn-info"><img src="/static/icon_history.png" alt="" class="btn-icon"> 履歴データ</a>
+        </div>
+
+        <!-- 1.5 🌱 表示中の品目切替（ミニトマト/だいこん）※過去データ閲覧用として残す -->
+        <div class="crop-switch-row">
+            <span class="crop-switch-label">表示中の品目</span>
+            <select id="crop-view-select" class="crop-select"></select>
+        </div>
 
         <!-- 2. サブ情報 -->
         <div class="sub-info">
-            最終計測時刻: <span id="last-updated">----/--/-- --:--:--</span> (5秒自動更新)
+            最終計測時刻: <span id="last-updated">----/--/-- --:--:--</span> (自動更新)
         </div>
 
-        <!-- 3. 現在のステータス表示（3列のカード） -->
+        <!-- 3. ヒーローカード（マスコット＋健康状態） -->
+        <div class="hero-card">
+            <!-- ② マスコットをタップするとミニゲーム一覧へ -->
+            <button type="button" id="mascot-hero-container" class="mascot-link"
+                    aria-label="ミニゲーム一覧をひらく"></button>
+            <span class="mascot-tap-hint">タップでミニゲームへ 🎮</span>
+            <div id="health-badge" class="health-badge neutral">計測中</div>
+            <div id="hero-message" class="hero-message">データを読み込んでいます...</div>
+        </div>
+
+        <!-- 4. 現在のステータス表示（3列のカード / ⑤タップで詳細ページへ） -->
         <div class="metrics-grid">
-            <div class="metric-card">
-                <div class="metric-title">現在の気温</div>
-                <div class="metric-value"><span id="curr-temp">--.-</span> <span class="unit">℃</span></div>
-            </div>
-            <div class="metric-card">
-                <div class="metric-title">現在の湿度</div>
-                <div class="metric-value"><span id="curr-humidity">--.-</span> <span class="unit">%</span></div>
-            </div>
-            <div class="metric-card">
-                <div class="metric-title">現在の土壌水分量</div>
-                <div class="metric-value"><span id="curr-soil">--.-</span> <span class="unit">%</span></div>
-            </div>
+            <a href="/detail?type=temperature" class="metric-card metric-link">
+                <div class="metric-title">気温</div>
+                <div class="metric-value" id="curr-temp-box"><span id="curr-temp">--.-</span> <span class="unit">℃</span></div>
+                <div class="metric-sub" id="sub-temp"></div>
+                <div class="metric-hint">詳細 ›</div>
+            </a>
+            <a href="/detail?type=humidity" class="metric-card metric-link">
+                <div class="metric-title">湿度</div>
+                <div class="metric-value" id="curr-humidity-box"><span id="curr-humidity">--.-</span> <span class="unit">%</span></div>
+                <div class="metric-sub" id="sub-humidity"></div>
+                <div class="metric-hint">詳細 ›</div>
+            </a>
+            <a href="/detail?type=soil" class="metric-card metric-link">
+                <div class="metric-title">土壌湿度</div>
+                <div class="metric-value" id="curr-soil-box"><span id="curr-soil">--.-</span> <span class="unit">%</span></div>
+                <div class="metric-sub" id="sub-soil"></div>
+                <div class="metric-hint">詳細 ›</div>
+            </a>
         </div>
 
-        <!-- 4. AI分析エリア -->
+        <!-- 5. AI分析エリア -->
         <div class="ai-box">
-            <h3>🤖 AI分析（ステータスインサイト）</h3>
+            <h3><img src="/static/icon_ai.png" alt="" class="heading-icon"> AIステータスインサイト</h3>
             <p id="ai-analysis-text">最新データを読み込んでいます...</p>
 
-            <!-- 🔊 追加：自動読み上げ ON/OFF トグルスイッチ（初期設定: OFF） -->
-            <div class="autoplay-container" style="margin-top: 15px; margin-bottom: 10px;">
-                <label style="cursor: pointer; font-weight: bold; display: inline-flex; align-items: center; gap: 8px;">
-                    <input type="checkbox" id="autoplay-toggle" style="transform: scale(1.3); cursor: pointer;">
-                    <span id="autoplay-status-text" style="color: #666;">🔊 自動読み上げ: OFF</span>
+            {# 【仕様変更 2026-11-16】自動読み上げを廃止
+            <div class="autoplay-container">
+                <label>
+                    <input type="checkbox" id="autoplay-toggle">
+                    <span id="autoplay-status-text">🔊 自動読み上げ: OFF</span>
                 </label>
             </div>
+            #}
 
-            <div class="voice-controls" style="margin-top: 10px; display: flex; gap: 10px; flex-wrap: wrap;">
-                <!-- 状況だけ（ずんだもん: ID 3） -->
-                <button id="btn-zunda" onclick="speakPart('status', 3, 'btn-zunda')" class="btn" style="background-color: #52b788; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer;">
-                    🟢 状況を聴く (ずんだもん)
+            <div class="voice-controls">
+                <!-- 【仕様変更 2026-11-16】状況(ずんだもん)→対策(あんこもん)を続けて読み上げる1ボタンに統一 -->
+                <button type="button" id="btn-voice" onclick="speakAll('btn-voice')" class="btn" style="flex:1 1 100%;">
+                    <span class="btn-label">🟢 状況を聴く</span>
                 </button>
-                <!-- 対策だけ（あんこもん: ID 74） -->
-                <button id="btn-anko" onclick="speakPart('action', 74, 'btn-anko')" class="btn" style="background-color: #8e7dbe; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer;">
-                    🟣 対策を聴く (あんこもん)
+                {# 【仕様変更 2026-11-16】2ボタンを1つに統一
+                <button type="button" id="btn-zunda" onclick="speakPart('status', 3, 'btn-zunda')" class="btn">
+                    <span class="btn-label">🟢 状況を聴く</span>
                 </button>
+                <button type="button" id="btn-anko" onclick="speakPart('action', 74, 'btn-anko')" class="btn">
+                    <span class="btn-label">🟣 対策を聴く</span>
+                </button>
+                #}
             </div>
         </div>
 
-        <!-- 5. 直近のセンサーログ（最新10件） -->
-        <h2>直近のセンサーログ (最新10件)</h2>
-        <div id="recent-logs">
-            <p>データを読み込んでいます...</p>
+        <!-- 6. データ収集間隔の設定（⑧ 入力欄と保存ボタンの高さを統一） -->
+        <div class="ai-box">
+            <h3>⏱️ データ収集間隔</h3>
+            <p>現在の間隔: <span id="interval-value">--</span> 秒（5秒〜3600秒[1時間]で指定できます）</p>
+            <div class="interval-row">
+                <input type="number" id="interval-input" class="water-form-input" min="5" max="3600" step="1" inputmode="numeric">
+                <button type="button" id="interval-save-btn" class="btn btn-info"><span class="btn-label">保存</span></button>
+            </div>
+            <p id="interval-status" class="water-add-status"></p>
         </div>
 
-        <!-- 6. 最下部：DB全履歴画面へのボタン -->
-        <div class="footer-action">
-            <a href="/camera" class="btn btn-secondary">カメラをみる</a>
-            <a href="/watering" class="btn btn-info">散水する</a>
-            <a href="/history" class="btn btn-success">DB全履歴データを見る (DB画面へ)</a>
+        {# 【仕様変更 2026-11-16】現在の栽培品目の切替を廃止（書き込み先はダイコン固定）
+        <div class="ai-box">
+            <h3>🌱 現在の栽培品目</h3>
+            <p>Piから届くセンサーデータの書き込み先です（表示中の品目とは別の設定です）。</p>
+            <div class="interval-row">
+                <select id="current-crop-select" class="crop-select" style="flex:1 1 auto; height:52px;"></select>
+                <button type="button" id="current-crop-save-btn" class="btn btn-info"><span class="btn-label">切替</span></button>
+            </div>
+            <p id="current-crop-status" class="water-add-status"></p>
+        </div>
+        #}
+
+        {# 【仕様変更 2026-11-16】基準データ（気象庁の平年値）を廃止
+        <div class="ai-box">
+            <h3>📍 基準データ（気象庁の平年値）</h3>
+            <p id="ref-current">基準を読み込んでいます...</p>
+            <div class="interval-row">
+                <select id="ref-pref-select" class="crop-select" aria-label="都道府県" style="flex:1 1 40%; height:52px;"></select>
+                <select id="ref-station-select" class="crop-select" aria-label="観測地点" style="flex:1 1 40%; height:52px;"></select>
+                <button type="button" id="ref-save-btn" class="btn btn-info"><span class="btn-label">保存</span></button>
+            </div>
+            <p id="ref-status" class="water-add-status"></p>
+        </div>
+        #}
+
+        {# 【仕様変更 2026-11-16】土壌湿度の校正を廃止
+        <div class="ai-box">
+            <h3 id="calib-title">🌱 土壌湿度の校正</h3>
+            <p>文献の適正範囲(pF値)を、センサーの値(%)に合わせるための設定です。実際の土で、次の2つのときにそれぞれ登録してください。</p>
+            <p id="calib-summary" class="calib-summary">読み込んでいます...</p>
+            <div class="calib-buttons">
+                <button type="button" id="calib-wet-btn" class="btn btn-info"><span class="btn-label">💧 水やり後、水が引いた直後</span></button>
+                <button type="button" id="calib-dry-btn" class="btn btn-secondary"><span class="btn-label">🏜️ 乾いて、水をやりたいとき</span></button>
+                <button type="button" id="calib-reset-btn" class="btn calib-reset"><span class="btn-label">校正をリセット</span></button>
+            </div>
+            <p id="calib-status" class="water-add-status"></p>
+        </div>
+        #}
+
+        <!-- 7. 直近のセンサーログ（⑩ 初期は折りたたみ） -->
+        <h2 class="collapsible-header" id="logs-toggle" role="button" tabindex="0" aria-expanded="false" aria-controls="recent-logs">
+            <span>直近のセンサーログ (最新10件)</span>
+            <span class="collapsible-arrow" id="logs-arrow">▼</span>
+        </h2>
+        <div id="recent-logs" class="collapsible-body is-collapsed">
+            <p style="color: rgba(255,255,255,0.85);">データを読み込んでいます...</p>
+        </div>
+
+        <!-- 8. 最下部：各画面へのボタン -->
+        <div class="footer-action nav-row">
+            <a href="/camera" class="btn btn-secondary"><img src="/static/icon_camera.png" alt="" class="btn-icon"> カメラ映像</a>
+            <a href="/watering" class="btn btn-success"><img src="/static/icon_watering.png" alt="" class="btn-icon"> 散水実行</a>
+            <a href="/history" class="btn btn-info"><img src="/static/icon_history.png" alt="" class="btn-icon"> 履歴データ</a>
         </div>
     </div>
 
+    <script src="{{ url_for('static', filename='crop.js') }}"></script>
+    <script src="{{ url_for('static', filename='reference.js') }}"></script>
     <script src="{{ url_for('static', filename='app.js') }}"></script>
 </body>
 </html>

@@ -1,0 +1,4 @@
+sudo systemctl restart tomato-server.service
+
+sleep 3
+systemctl status tomato-server.service
