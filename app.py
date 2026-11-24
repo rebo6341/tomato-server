@@ -292,4 +292,163 @@ def upload_and_analyze_image():
       prev_summary = f'日時:{p[0]} / ステージ:{p[1]} / 色:{p[2]} / 赤み:{p[3]}'
 
     vision = analyze_tomato_image_with_groq_vision(
-        image_bytes, mime_
+        image_bytes, mime_type, prev_summary=prev_summary
+    )
+
+    # センサー値が未送信なら直近のセンサー値を参考取得
+    if temp is None and humi is None and soil is None:
+      last_sensor = execute_query(
+          'SELECT temperature, humidity, soil_moisture FROM local_sensor_data '
+          'WHERE temperature IS NOT NULL OR humidity IS NOT NULL OR soil_moisture IS NOT NULL '
+          'ORDER BY id DESC LIMIT 1',
+          fetch=True,
+      )
+      if last_sensor:
+        temp, humi, soil = last_sensor[0]
+
+    ai_comment = analyze_with_groq(temp, humi, soil, vision=vision)
+
+    execute_query(
+        'INSERT INTO local_sensor_data ('
+        'timestamp, temperature, humidity, soil_moisture, ai_analysis, '
+        'image_path, growth_stage, size_summary, color_summary, redness_score, health_status, vision_json'
+        ') VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        (
+            ts,
+            temp,
+            humi,
+            soil,
+            ai_comment,
+            image_url,
+            vision['growth_stage'],
+            vision['size_summary'],
+            vision['color_summary'],
+            vision['redness_score'],
+            vision['health_status'],
+            json.dumps(vision, ensure_ascii=False),
+        ),
+    )
+
+    payload = {
+        'timestamp': ts,
+        'temperature': temp,
+        'humidity': humi,
+        'soil_moisture': soil,
+        'ai_analysis': ai_comment,
+        'image_url': image_url,
+        'growth_stage': vision['growth_stage'],
+        'size_summary': vision['size_summary'],
+        'color_summary': vision['color_summary'],
+        'redness_score': vision['redness_score'],
+        'health_status': vision['health_status'],
+    }
+    socketio.emit('sensor_db_updated', payload)
+    return jsonify({'status': 'success', **payload}), 200
+  except Exception as e:
+    return jsonify({'status': 'error', 'message': str(e)}), 400
+
+
+# 2. API: データ取得
+@app.route('/api/data', methods=['GET'])
+def get_data():
+  limit = request.args.get('limit', default=None, type=int)
+
+  base_query = (
+      'SELECT timestamp, temperature, humidity, soil_moisture, ai_analysis, '
+      'image_path, growth_stage, size_summary, color_summary, redness_score, health_status '
+      'FROM local_sensor_data ORDER BY id DESC'
+  )
+  if limit:
+    rows = execute_query(f'{base_query} LIMIT ?', (limit,), fetch=True)
+  else:
+    rows = execute_query(base_query, fetch=True)
+
+  data = []
+  if rows:
+    for r in rows:
+      data.append({
+          'timestamp': r[0],
+          'temperature': r[1],
+          'humidity': r[2],
+          'soil_moisture': r[3],
+          'ai_analysis': r[4],
+          'image_url': r[5],
+          'growth_stage': r[6],
+          'size_summary': r[7],
+          'color_summary': r[8],
+          'redness_score': r[9],
+          'health_status': r[10],
+      })
+  return jsonify(data)
+
+
+# 3. 画面ルーティング
+@app.route('/')
+def index():
+  return render_template('index.html')
+
+
+@app.route('/history')
+def history():
+  return render_template('history.html')
+
+
+@app.route('/camera')
+def camera():
+  return render_template('camera.html')
+
+
+@app.route('/watering')
+def watering():
+  return render_template('watering.html')
+
+
+@app.route('/apple-touch-icon.png')
+@app.route('/apple-touch-icon-precomposed.png')
+@app.route('/apple-touch-icon-120x120.png')
+@app.route('/apple-touch-icon-120x120-precomposed.png')
+@app.route('/favicon.ico')
+def serve_apple_icon():
+  return send_from_directory('static', 'icon.png', mimetype='image/png')
+
+
+# VOICEVOX ENGINE の URL
+VOICEVOX_URL = 'http://localhost:50021'
+
+
+@app.route('/generate-voice', methods=['POST'])
+def generate_voice():
+  data = request.get_json()
+  text = data.get('text', '')
+  speaker_id = data.get('speaker', 3)  # 初期値: 3 (ずんだもん ノーマル)
+
+  if not text:
+    return jsonify({'error': 'No text provided'}), 400
+
+  try:
+    # 1. 音声合成用のクエリを作成
+    query_res = requests.post(
+        f'{VOICEVOX_URL}/audio_query',
+        params={'text': text, 'speaker': speaker_id},
+        timeout=5,
+    )
+    query_data = query_res.json()
+
+    # 2. 音声波形データを生成
+    synth_res = requests.post(
+        f'{VOICEVOX_URL}/synthesis',
+        params={'speaker': speaker_id},
+        json=query_data,
+        timeout=10,
+    )
+
+    # 生成した WAV データを返却
+    return send_file(BytesIO(synth_res.content), mimetype='audio/wav')
+
+  except Exception as e:
+    return jsonify({'error': str(e)}), 500
+
+
+if __name__ == '__main__':
+  # 💡 Flask-SocketIO で起動するように変更
+  socketio.run(app, host='0.0.0.0', port=5000, debug=True, allow_unsafe_werkzeug=True)
