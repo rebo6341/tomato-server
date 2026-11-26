@@ -4,29 +4,40 @@
 //   ・数値カードの下に「適正範囲と判定」を表示
 //   【仕様変更 2026-11-16】気象庁の平年値との差・観測地点の選択・土壌湿度の校正は廃止
 //   判定の基準そのものはサーバー(reference.py)が持つ。ここは表示だけを担当する。
+//
+//   【流れ】app.js が Reference.refresh(品目) を呼ぶ
+//           → /api/reference/state で「適正範囲・判定（ok/low/high）」をもらう
+//           → 数値の文字色と、カード下の「適正 20〜25℃｜高め」を描く
+//   【公開するもの】window.Reference（refresh / clear と、色・文言を作る小さな関数）
 // --------------------------------------------------
 (function () {
+  // 指標ごとに、書き換える HTML 要素の id と単位
   const METRIC_UI = {
     temperature: { boxId: 'curr-temp-box', subId: 'sub-temp', unit: '℃' },
     humidity: { boxId: 'curr-humidity-box', subId: 'sub-humidity', unit: '%' },
     soil: { boxId: 'curr-soil-box', subId: 'sub-soil', unit: '%' },
   };
-  const JUDGE_WORD = { ok: '適正', low: '低め', high: '高め' };
+  const JUDGE_WORD = { ok: '適正', low: '低め', high: '高め' }; // サーバーの判定 → 表示する言葉
   const CROP_NAME = { tomato: 'ミニトマト', daikon: 'ダイコン' };
 
+  // 数値を小数 d 桁の文字にする（値が無ければ '-'）／ 正負の記号を返す
   const fmt = (v, d = 1) => (v === null || v === undefined || isNaN(v) ? '-' : Number(v).toFixed(d));
   const sign = (v) => (v > 0 ? '+' : v < 0 ? '−' : '±');
 
+  // 要素があれば文字を入れる（廃止した機能用に残っている小さな関数）
   function setText(el, text) {
     if (el) el.textContent = text;
   }
 
   // ---------- 色 ----------
+  // 0〜1 の割合を色にする（0=青, 0.5=緑, 1=赤）。色の計算は app.js の valueToColor を借りる
   function colorFromRatio(ratio) {
     return window.valueToColor ? window.valueToColor(ratio, 0, 1) : '';
   }
 
   // 適正範囲からの外れ具合を 0〜1（0.5=範囲内）に変換
+  //   範囲内なら 0.5（緑）。下に外れるほど 0（青）、上に外れるほど 1（赤）に近づく。
+  //   「範囲の幅の半分」外れたら端の色になる（片側しか基準が無いときは ℃=10 / %=30 を幅とみなす）
   function rangeRatio(value, range, unit) {
     const lo = range.low;
     const hi = range.high;
@@ -37,6 +48,7 @@
     return 0.5;
   }
 
+  // 1つの指標（block = サーバーの metrics[指標]）の文字色を決める
   function colorFor(block, unit) {
     if (block.value === null || block.value === undefined) return '';
     // ① 平年値との差（サーバーが平年値を返さなくなったため、現在は使われない）
@@ -51,6 +63,7 @@
   }
 
   // ---------- 文言 ----------
+  // 適正範囲を文字にする。例: '20〜25℃' / '8℃以上' / '23℃以下'
   function rangeText(range, unit) {
     if (!range) return '';
     const { low, high } = range;
@@ -61,6 +74,7 @@
     return '';
   }
 
+  // 平年値とのずれ（z 値）を言葉にする（平年値の廃止により現在は使われていない）
   function zWord(z) {
     const a = Math.abs(z);
     if (a < 0.5) return '平年並み';
@@ -73,30 +87,18 @@
   // 【仕様変更 2026-11-16】平年値を廃止したため、平年比の行は出さない
   function normalLine(metric, block, unit) {
     return '';
-    // const n = block.normal;
-    // if (metric === 'soil') return '';
-    // if (block.normalStatus === 'ready' && n) {
-    //   if (metric === 'humidity') {
-    //     return `24時間平均 ${fmt(block.mean24h, 0)}%（平年比 ${sign(n.diff)}${fmt(Math.abs(n.diff), 0)}%）`;
-    //   }
-    //   const word = n.z === null ? '' : `・${zWord(n.z)}`;
-    //   return `平年比 ${sign(n.diff)}${fmt(Math.abs(n.diff))}${unit}${word}`;
-    // }
-    // if (block.normalStatus === 'collecting') return '24時間平均を集計中';
-    // if (block.normalStatus === 'unavailable') return '平年値データなし';
-    // return '';
   }
 
+  // カード下の判定の行。例: '適正 20〜25℃｜高め'（基準が無ければ '適正範囲: 未設定'）
   function judgeLine(metric, block, unit) {
     const r = block.range;
     if (!r || (r.low === null && r.high === null)) return '適正範囲: 未設定';
-    // 【仕様変更 2026-11-16】土壌湿度の校正を廃止したため「（暫定）」表記は出さない
-    // const tag = metric === 'soil' && r.calibrated === false ? '（暫定）' : '';
-    const tag = '';
+    const tag = ''; // 以前は未校正の土壌湿度に「（暫定）」を付けていた（校正の廃止により空）
     const j = JUDGE_WORD[block.judge] || '';
     return `適正 ${rangeText(r, unit)}${tag}${j ? `｜${j}` : ''}`;
   }
 
+  // カード下の補足欄を描き直す（空の行は出さない）。title はマウスを乗せたときの説明
   function renderSub(subEl, lineA, lineB, title) {
     if (!subEl) return;
     subEl.textContent = '';
@@ -111,6 +113,7 @@
   }
 
   // ---------- ダッシュボードのカード ----------
+  // 色と補足を全部消す（データが古い・取得失敗のとき app.js から呼ばれる）
   function clear() {
     Object.values(METRIC_UI).forEach((ui) => {
       const box = document.getElementById(ui.boxId);
@@ -119,6 +122,7 @@
     });
   }
 
+  // サーバーの判定結果（state）で3つのカードを描く
   function render(state) {
     Object.keys(METRIC_UI).forEach((metric) => {
       const ui = METRIC_UI[metric];
@@ -135,6 +139,8 @@
     });
   }
 
+  // 判定結果を取ってきて描く。何度も続けて呼ばれたときは、最後に呼んだ分の結果だけを使う
+  //（通信の返ってくる順番が前後しても、古い結果で上書きしないようにする）
   let refreshSeq = 0;
   function refresh(crop) {
     const seq = ++refreshSeq;
@@ -147,198 +153,6 @@
       })
       .catch((err) => console.error('基準データ取得エラー:', err));
   }
-
-  // 【仕様変更 2026-11-16】基準にする観測地点（気象庁の平年値）を廃止
-  // const prefSel = document.getElementById('ref-pref-select');
-  // const stationSel = document.getElementById('ref-station-select');
-  // const saveBtn = document.getElementById('ref-save-btn');
-  // const statusEl = document.getElementById('ref-status');
-  // const currentEl = document.getElementById('ref-current');
-  // let stationData = null;
-  //
-  // function fillStations(prefName, selectedKey) {
-  //   if (!stationSel || !stationData) return;
-  //   stationSel.textContent = '';
-  //   const pref = stationData.prefectures.find((p) => p.name === prefName);
-  //   (pref ? pref.stations : []).forEach((s) => {
-  //     const opt = document.createElement('option');
-  //     opt.value = s.key;
-  //     opt.textContent = s.name;
-  //     if (s.key === selectedKey) opt.selected = true;
-  //     stationSel.appendChild(opt);
-  //   });
-  // }
-  //
-  // function describeLocation(loc) {
-  //   if (!loc) return '';
-  //   let text = `基準: ${loc.prefName} ${loc.name}（${loc.credit}・${loc.period}）`;
-  //   const h = loc.humiditySource;
-  //   if (h && !h.same) text += `\n湿度の平年値は最寄りの気象官署「${h.name}」（約${h.distanceKm}km）で代用しています。`;
-  //   return text;
-  // }
-  //
-  // function refreshLocation() {
-  //   if (!currentEl) return Promise.resolve();
-  //   return fetch('/api/reference/location')
-  //     .then((res) => res.json())
-  //     .then((data) => {
-  //       if (!data.location) {
-  //         setText(currentEl, '基準データがまだ作られていません。');
-  //         return;
-  //       }
-  //       setText(currentEl, describeLocation(data.location) + (data.isDefault ? '\n（初期設定）' : ''));
-  //       if (prefSel && stationData && stationData.available) {
-  //         prefSel.value = data.location.prefName;
-  //         fillStations(data.location.prefName, data.location.key);
-  //       }
-  //     })
-  //     .catch(() => setText(currentEl, '基準の取得に失敗しました。'));
-  // }
-  //
-  // function initLocationUI() {
-  //   if (!prefSel || !stationSel || !saveBtn) return;
-  //   fetch('/api/reference/stations')
-  //     .then((res) => res.json())
-  //     .then((data) => {
-  //       stationData = data;
-  //       if (!data.available || data.prefectures.length === 0) {
-  //         setText(statusEl, '平年値データが未作成です。サーバーで tools/build_normals.py を実行してください。');
-  //         prefSel.disabled = stationSel.disabled = saveBtn.disabled = true;
-  //         return;
-  //       }
-  //       prefSel.textContent = '';
-  //       data.prefectures.forEach((p) => {
-  //         const opt = document.createElement('option');
-  //         opt.value = p.name;
-  //         opt.textContent = p.name;
-  //         prefSel.appendChild(opt);
-  //       });
-  //       return refreshLocation();
-  //     })
-  //     .catch((err) => console.error('地点一覧取得エラー:', err));
-  //
-  //   prefSel.addEventListener('change', () => fillStations(prefSel.value, null));
-  //   saveBtn.addEventListener('click', () => {
-  //     const key = stationSel.value;
-  //     if (!key) return;
-  //     saveBtn.disabled = true;
-  //     fetch('/api/reference/location', {
-  //       method: 'POST',
-  //       headers: { 'Content-Type': 'application/json' },
-  //       body: JSON.stringify({ key }),
-  //     })
-  //       .then((res) => res.json().then((data) => ({ ok: res.ok, data })))
-  //       .then(({ ok, data }) => {
-  //         if (ok) {
-  //           setText(statusEl, '保存しました。');
-  //           statusEl.style.color = '#2e7d32';
-  //           setText(currentEl, describeLocation(data.location));
-  //           if (window.fetchDashboardData) window.fetchDashboardData();
-  //         } else {
-  //           setText(statusEl, `エラー:\n${data.message || '保存に失敗しました。'}`);
-  //           statusEl.style.color = '#ff6b6b';
-  //         }
-  //       })
-  //       .catch(() => {
-  //         setText(statusEl, '通信エラーが発生しました。');
-  //         statusEl.style.color = '#ff6b6b';
-  //       })
-  //       .finally(() => {
-  //         saveBtn.disabled = false;
-  //       });
-  //   });
-  // }
-
-  // 【仕様変更 2026-11-16】土壌湿度の校正を廃止
-  // const calibTitle = document.getElementById('calib-title');
-  // const calibSummary = document.getElementById('calib-summary');
-  // const calibStatus = document.getElementById('calib-status');
-  // const wetBtn = document.getElementById('calib-wet-btn');
-  // const dryBtn = document.getElementById('calib-dry-btn');
-  // const resetBtn = document.getElementById('calib-reset-btn');
-  // let calibCrop = null;
-  // let calibAvg = null;
-  //
-  // function renderCalibration(crop, data) {
-  //   calibCrop = crop;
-  //   calibAvg = data.currentAverage;
-  //   setText(calibTitle, `🌱 土壌湿度の校正（${CROP_NAME[crop] || crop}）`);
-  //   const r = data.range;
-  //   const lines = [
-  //     `登録済み: 水やり直後 ${data.wet === null ? '未登録' : fmt(data.wet) + '%'} ／ 乾いたとき ${data.dry === null ? '未登録' : fmt(data.dry) + '%'}`,
-  //     `適正範囲: ${fmt(r.low)}〜${fmt(r.high)}%（${r.label}）`,
-  //     `いまの値: ${data.currentAverage === null ? '-' : fmt(data.currentAverage) + '%（直近5件の平均）'}`,
-  //   ];
-  //   setText(calibSummary, lines.join('\n'));
-  // }
-  //
-  // function refreshCalibration(crop) {
-  //   if (!calibSummary) return Promise.resolve();
-  //   return fetch(`/api/soil/calibration?crop=${encodeURIComponent(crop)}`)
-  //     .then((res) => res.json())
-  //     .then((data) => renderCalibration(crop, data))
-  //     .catch((err) => console.error('校正値取得エラー:', err));
-  // }
-  //
-  // function ensureCalibration(crop) {
-  //   if (calibCrop !== crop) return refreshCalibration(crop);
-  //   return Promise.resolve();
-  // }
-  //
-  // function postCalibration(body, okMessage) {
-  //   [wetBtn, dryBtn, resetBtn].forEach((b) => b && (b.disabled = true));
-  //   return fetch('/api/soil/calibration', {
-  //     method: 'POST',
-  //     headers: { 'Content-Type': 'application/json' },
-  //     body: JSON.stringify(body),
-  //   })
-  //     .then((res) => res.json().then((data) => ({ ok: res.ok, data })))
-  //     .then(({ ok, data }) => {
-  //       if (ok) {
-  //         setText(calibStatus, okMessage);
-  //         calibStatus.style.color = '#2e7d32';
-  //         return refreshCalibration(body.crop).then(() => {
-  //           if (window.fetchDashboardData) window.fetchDashboardData();
-  //         });
-  //       }
-  //       setText(calibStatus, `エラー:\n${data.message || '登録に失敗しました。'}`);
-  //       calibStatus.style.color = '#ff6b6b';
-  //     })
-  //     .catch(() => {
-  //       setText(calibStatus, '通信エラーが発生しました。');
-  //       calibStatus.style.color = '#ff6b6b';
-  //     })
-  //     .finally(() => {
-  //       [wetBtn, dryBtn, resetBtn].forEach((b) => b && (b.disabled = false));
-  //     });
-  // }
-  //
-  // function initCalibrationUI() {
-  //   if (!calibSummary) return;
-  //   const currentCrop = () => (window.CropSwitcher ? window.CropSwitcher.getViewCrop() : 'tomato');
-  //   const bind = (btn, point, label) => {
-  //     if (!btn) return;
-  //     btn.addEventListener('click', () => {
-  //       const crop = currentCrop();
-  //       const avgText = calibAvg === null ? '（測定データなし）' : `${fmt(calibAvg)}%`;
-  //       if (!window.confirm(`いまの土壌湿度 ${avgText} を「${label}」として登録します。\n（${CROP_NAME[crop]}の校正値）よろしいですか？`)) return;
-  //       postCalibration({ crop, point }, `「${label}」を登録しました。`);
-  //     });
-  //   };
-  //   bind(wetBtn, 'wet', '水やり直後（水が引いた後）');
-  //   bind(dryBtn, 'dry', '乾いて水をやりたいとき');
-  //   if (resetBtn) {
-  //     resetBtn.addEventListener('click', () => {
-  //       const crop = currentCrop();
-  //       if (!window.confirm(`${CROP_NAME[crop]}の土壌湿度の校正を消して、暫定の範囲(20〜70%)に戻します。よろしいですか？`)) return;
-  //       postCalibration({ crop, reset: true }, '校正をリセットしました。');
-  //     });
-  //   }
-  //   refreshCalibration(currentCrop());
-  // }
-  //
-  // initLocationUI();
-  // initCalibrationUI();
 
   // 廃止した機能の関数は、呼び出し側が残っていても壊れないよう「何もしない」形で残す
   const noop = () => Promise.resolve();

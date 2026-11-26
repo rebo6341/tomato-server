@@ -1,3 +1,27 @@
+{#
+  ==================================================
+  index.html ― ダッシュボード（トップ画面 / ）
+  --------------------------------------------------
+  ※ この説明は Jinja2（Flask のテンプレート）のコメント。サーバー側で消えるのでブラウザには届かない。
+  ※ CSS や JS の中に「{」と「#」を続けて書くと、Jinja2 がコメントの始まりと誤解してエラーになるので注意。
+
+  【画面の構成】上から順に
+    1. ヘッダー（マスコットアイコン・タイトル）
+    1.1 オンライン状態（ラズパイ / センサー / カメラ）
+    1.2 各画面へのボタン（カメラ・散水・履歴）
+    1.5 表示中の品目の切替
+    2. 最終計測時刻
+    3. マスコット（タップでミニゲームへ）と状態メッセージ
+    4. 気温・湿度・土壌湿度のカード（タップで詳細ページへ）
+    5. AI 分析と「状況を聴く」ボタン
+    6. データ収集間隔の設定
+    7. 直近のセンサーログ（折りたたみ）
+    8. 各画面へのボタン（下にも同じもの）
+
+  【動き】画面の中身は app.js が書き換える（HTML の初期値は「読み込み中」の表示）。
+          id を変えると app.js / reference.js が要素を見つけられなくなるので注意。
+  ==================================================
+-#}
 <!DOCTYPE html>
 <html lang="ja">
 <head>
@@ -32,7 +56,6 @@
                 </div>
             </div>
             <!-- 【仕様変更 2026-11-16】オンライン表示は下の3つ（ラズパイ/センサー/カメラ）に分けた -->
-            {# <div id="network-status" class="status-badge offline">● オフライン (判定中)</div> #}
         </header>
 
         <!-- 1.1 🔌 オンライン状態（ラズパイ本体 / センサー / カメラ） -->
@@ -94,31 +117,14 @@
 
         <!-- 5. AI分析エリア -->
         <div class="ai-box">
-            <h3><img src="/static/icon_ai.png" alt="" class="heading-icon"> AIステータスインサイト</h3>
+            <h3><img src="/static/icon_ai.png" alt="" class="heading-icon"> AI分析</h3>
             <p id="ai-analysis-text">最新データを読み込んでいます...</p>
-
-            {# 【仕様変更 2026-11-16】自動読み上げを廃止
-            <div class="autoplay-container">
-                <label>
-                    <input type="checkbox" id="autoplay-toggle">
-                    <span id="autoplay-status-text">🔊 自動読み上げ: OFF</span>
-                </label>
-            </div>
-            #}
 
             <div class="voice-controls">
                 <!-- 【仕様変更 2026-11-16】状況(ずんだもん)→対策(あんこもん)を続けて読み上げる1ボタンに統一 -->
                 <button type="button" id="btn-voice" onclick="speakAll('btn-voice')" class="btn" style="flex:1 1 100%;">
                     <span class="btn-label">🟢 状況を聴く</span>
                 </button>
-                {# 【仕様変更 2026-11-16】2ボタンを1つに統一
-                <button type="button" id="btn-zunda" onclick="speakPart('status', 3, 'btn-zunda')" class="btn">
-                    <span class="btn-label">🟢 状況を聴く</span>
-                </button>
-                <button type="button" id="btn-anko" onclick="speakPart('action', 74, 'btn-anko')" class="btn">
-                    <span class="btn-label">🟣 対策を聴く</span>
-                </button>
-                #}
             </div>
         </div>
 
@@ -132,45 +138,6 @@
             </div>
             <p id="interval-status" class="water-add-status"></p>
         </div>
-
-        {# 【仕様変更 2026-11-16】現在の栽培品目の切替を廃止（書き込み先はダイコン固定）
-        <div class="ai-box">
-            <h3>🌱 現在の栽培品目</h3>
-            <p>Piから届くセンサーデータの書き込み先です（表示中の品目とは別の設定です）。</p>
-            <div class="interval-row">
-                <select id="current-crop-select" class="crop-select" style="flex:1 1 auto; height:52px;"></select>
-                <button type="button" id="current-crop-save-btn" class="btn btn-info"><span class="btn-label">切替</span></button>
-            </div>
-            <p id="current-crop-status" class="water-add-status"></p>
-        </div>
-        #}
-
-        {# 【仕様変更 2026-11-16】基準データ（気象庁の平年値）を廃止
-        <div class="ai-box">
-            <h3>📍 基準データ（気象庁の平年値）</h3>
-            <p id="ref-current">基準を読み込んでいます...</p>
-            <div class="interval-row">
-                <select id="ref-pref-select" class="crop-select" aria-label="都道府県" style="flex:1 1 40%; height:52px;"></select>
-                <select id="ref-station-select" class="crop-select" aria-label="観測地点" style="flex:1 1 40%; height:52px;"></select>
-                <button type="button" id="ref-save-btn" class="btn btn-info"><span class="btn-label">保存</span></button>
-            </div>
-            <p id="ref-status" class="water-add-status"></p>
-        </div>
-        #}
-
-        {# 【仕様変更 2026-11-16】土壌湿度の校正を廃止
-        <div class="ai-box">
-            <h3 id="calib-title">🌱 土壌湿度の校正</h3>
-            <p>文献の適正範囲(pF値)を、センサーの値(%)に合わせるための設定です。実際の土で、次の2つのときにそれぞれ登録してください。</p>
-            <p id="calib-summary" class="calib-summary">読み込んでいます...</p>
-            <div class="calib-buttons">
-                <button type="button" id="calib-wet-btn" class="btn btn-info"><span class="btn-label">💧 水やり後、水が引いた直後</span></button>
-                <button type="button" id="calib-dry-btn" class="btn btn-secondary"><span class="btn-label">🏜️ 乾いて、水をやりたいとき</span></button>
-                <button type="button" id="calib-reset-btn" class="btn calib-reset"><span class="btn-label">校正をリセット</span></button>
-            </div>
-            <p id="calib-status" class="water-add-status"></p>
-        </div>
-        #}
 
         <!-- 7. 直近のセンサーログ（⑩ 初期は折りたたみ） -->
         <h2 class="collapsible-header" id="logs-toggle" role="button" tabindex="0" aria-expanded="false" aria-controls="recent-logs">
@@ -189,6 +156,7 @@
         </div>
     </div>
 
+    {# 読み込み順が大事: crop.js（品目切替）→ reference.js（色と判定表示）→ app.js（画面全体） #}
     <script src="{{ url_for('static', filename='crop.js') }}"></script>
     <script src="{{ url_for('static', filename='reference.js') }}"></script>
     <script src="{{ url_for('static', filename='app.js') }}"></script>

@@ -1,5 +1,39 @@
+/* ==================================================
+   style.css ― 全画面共通のスタイル（見た目）
+   --------------------------------------------------
+   【大事な注意】CSS は「後に書いたものが優先」される。
+     このファイルは修正を後ろに追記してきた形なので、同じセレクタが複数回出てくる
+     （例: .status-badge / .metric-value .unit / .camera-stream-wrapper など）。
+     順番を入れ替えると見た目が変わるので、並び替えはしないこと。
+     修正するときは「そのセレクタが他の場所にもないか」を検索してから。
+
+   【目次】（上から順に）
+     1. 色・角丸・影などの変数（:root）と基本レイアウト
+     2. ヘッダー / 品目切替 / ステータスバッジ
+     3. ダッシュボード: マスコット（ヒーローカード）・数値カード・AI分析・ログ
+     4. 履歴画面のテーブル / ボタン共通 / カメラ映像
+     5. スマホ（幅480px以下）向けの調整
+     6. 散水画面 / iOS Safari 対策 / 日付・時刻入力
+     7. 2026-08-28 修正分（①〜⑱: はみ出し防止・改行・詳細ページへのリンク・
+        マスコットのタップ・iOS のボタン描画・収集間隔の入力欄・折りたたみ など）
+     8. ミニゲーム（一覧・共通・神経衰弱・もぐらたたき）
+     9. 詳細ページ
+    10. ダイコンリズム
+    11. 基準データ（数値カードの補足）/ 画像アイコン / 品目セレクトのアイコン
+    12. 2026-11-19 スマホで上部の表示を横1列にする
+
+   【使われていないスタイル】（廃止した機能の名残。消しても画面は変わらない）
+     .autoplay-container / #autoplay-status-text（自動読み上げ）
+     .water-schedule-item（予約散水）
+     .calib-buttons / .calib-reset / #ref-current / #calib-summary（土壌校正・平年値）
+     .camera-badge / .camera-offline-overlay / #camera-status-text（旧カメラ画面）
+     .hero-card .mascot-hero / .crop-badge
+   ================================================== */
+
+/* Google Fonts の丸ゴシック体「M PLUS Rounded 1c」を読み込む */
 @import url('https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@400;500;700;800&display=swap');
 
+/* ---------- 1. 色などの変数（var(--名前) で使う。ブランドカラーは teal → blue） ---------- */
 :root {
     /* 背景グラデーション */
     --grad-top: #0ed9b4;
@@ -33,10 +67,12 @@
     --radius-pill: 999px;
 }
 
+/* 幅・高さに padding と border を含めて計算する（レイアウト計算を分かりやすくする） */
 * {
     box-sizing: border-box;
 }
 
+/* ページ全体: 背景は teal → blue のグラデーション */
 body {
     margin: 0;
     padding: 24px 16px 48px;
@@ -47,6 +83,7 @@ body {
     color: var(--ink);
 }
 
+/* 中身の横幅（スマホ幅を基準に中央寄せ）。履歴・カメラは少し広い container-large */
 .container {
     max-width: 480px;
     margin: 0 auto;
@@ -194,7 +231,8 @@ h2 {
     color: #fff0f0;
 }
 
-/* ---------- ヒーローカード（マスコット＋状態） ---------- */
+/* ---------- ヒーローカード（マスコット＋状態） ----------
+   health-badge の色: healthy=緑 / warning=オレンジ / neutral=灰（読み込み中） */
 .hero-card {
     background: var(--mint-card);
     border-radius: var(--radius-lg);
@@ -312,6 +350,7 @@ h2 {
     opacity: 1;
 }
 
+/* 自動読み上げのスイッチ（2026-11-16 廃止。現在は使われていない） */
 .autoplay-container {
     background: rgba(255, 255, 255, 0.6);
     border: none;
@@ -388,7 +427,9 @@ h2 {
     background-color: rgba(255, 255, 255, 0.35);
 }
 
-/* ---------- ボタン（フッター等 共通） ---------- */
+/* ---------- ボタン（フッター等 共通） ----------
+   色の種類: btn-secondary=紺 / btn-success=緑 / btn-info=白
+   top-action / nav-row はダッシュボード上下の「カメラ・散水・履歴」の3つ並びボタン */
 .footer-action {
     display: flex;
     gap: 12px;
@@ -459,6 +500,7 @@ h2 {
     display: block;
 }
 
+/* ---------- 5. スマホ（画面幅 480px 以下）のときだけ適用 ---------- */
 @media (max-width: 480px) {
     .metrics-grid { grid-template-columns: repeat(3, 1fr); gap: 8px; }
     .metric-value { font-size: 1.35rem; }
@@ -496,6 +538,7 @@ h2 {
     font-size: 0.85rem;
     font-weight: 600;
 }
+/* 予約散水の一覧（2026-11-16 廃止。現在は使われていない） */
 .water-schedule-item {
     display: flex;
     align-items: center;
@@ -748,7 +791,8 @@ body {
     display: none;
 }
 
-/* ---------- ⑪⑫ カメラ: オフライン表示 ---------- */
+/* ---------- ⑪⑫ カメラ: オフライン表示 ----------
+   ※ 現在の camera.html では camera-badge / camera-offline-overlay は使われていない */
 .camera-badge {
     display: inline-flex;
     align-items: center;
@@ -1114,7 +1158,10 @@ body {
     opacity: 0.72;
 }
 
-/* ダイコンリズム */
+/* ダイコンリズム
+   ・4本のレーン（data-lane 0〜3）ごとにキーとノーツの色を変える
+   ・ヒットライン（bottom:54px）とノーツの高さ(26px)は、game_daikon_rhythm.html の
+     hitY = laneHeight - 67 の計算と対応しているので、変えるときは両方そろえること */
 .rhythm-field {
     position: relative;
     height: 360px;
@@ -1206,7 +1253,9 @@ body {
 .rhythm-judge.good { color: var(--amber-dark); }
 .rhythm-judge.miss { color: #d1453b; }
 
-/* ---------- 📏 基準データ（数値カードの補足・設定欄） ---------- */
+/* ---------- 📏 基準データ（数値カードの補足・設定欄） ----------
+   .metric-sub は数値カード下の「適正 20〜25℃｜高め」（reference.js が描く）。
+   #ref-current 以降の calib 系は廃止した設定欄のもの（現在は使われていない） */
 .metric-sub {
     margin-top: 6px;
     font-size: 0.66rem;

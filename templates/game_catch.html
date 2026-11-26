@@ -1,3 +1,14 @@
+{#
+  ==================================================
+  game_catch.html ― ミニゲーム「トマトキャッチ」（/games/catch）
+  --------------------------------------------------
+  ルール: カゴを左右に動かし、赤いトマトをキャッチすると +1点。
+          緑のトマト（未熟）を取る・赤いトマトを落とすとミス。ミス3回で終了。
+  しくみ: <canvas> に毎フレーム描き直す（requestAnimationFrame のループ）。
+          点数が上がるほど落ちる速さが上がる。ハイスコアはページを閉じると消える。
+  操作:   マウス / 指でカゴを動かす、← → キー、スペースキーでスタート
+  ==================================================
+-#}
 <!DOCTYPE html>
 <html lang="ja">
 <head>
@@ -54,6 +65,7 @@
 
 <script>
 (function () {
+    // 描画するキャンバスと、その大きさ（HTML の width=360 height=440）
     const canvas = document.getElementById('stage');
     const ctx = canvas.getContext('2d');
     const W = canvas.width;
@@ -65,20 +77,23 @@
     const msgEl = document.getElementById('message');
     const restartBtn = document.getElementById('restart-btn');
 
+    // カゴ（basketX は中心の横位置）
     let basketX = W / 2;
     const basketW = 78;
     const basketH = 26;
     const basketY = H - 46;
 
-    let items = [];
+    // ゲームの状態
+    let items = [];       // 落ちているトマト
     let score = 0;
     let miss = 0;
     let best = 0;
-    let running = false;
-    let spawnTimer = 0;
-    let speedBase = 1.7;
-    let lastTime = 0;
+    let running = false;  // プレイ中か
+    let spawnTimer = 0;   // 次のトマトを出すまでのカウント
+    let speedBase = 1.7;  // 落ちる速さの基本値（点数が増えると上がる）
+    let lastTime = 0;     // 前のフレームの時刻
 
+    // 新しいゲームを始める
     function reset() {
         items = [];
         score = 0;
@@ -93,6 +108,7 @@
         requestAnimationFrame(loop);
     }
 
+    // 画面上にトマトを1個出す（25% の確率で緑の未熟トマト）
     function spawn() {
         const isBad = Math.random() < 0.25;
         items.push({
@@ -104,6 +120,7 @@
         });
     }
 
+    // トマト1個を描く（本体 → ヘタ → 光沢の順）
     function drawTomato(x, y, r, bad) {
         ctx.beginPath();
         ctx.fillStyle = bad ? '#7cb342' : '#ff5b52';
@@ -123,6 +140,7 @@
         ctx.fill();
     }
 
+    // カゴを描く（縁 → 台形の本体）
     function drawBasket() {
         const x = basketX - basketW / 2;
         ctx.fillStyle = '#b97f1c';
@@ -137,7 +155,9 @@
         ctx.fill();
     }
 
+    // 1フレーム分の処理（約60回/秒）: 背景 → トマトの移動・当たり判定 → カゴ → 終了判定
     function loop(now) {
+        // dt = 前のフレームからの経過時間（60fps の1コマ = 1.0。端末が重くても速さが変わらないように）
         const dt = Math.min(40, now - lastTime) / 16.67;
         lastTime = now;
 
@@ -157,6 +177,7 @@
             }
         }
 
+        // 後ろから順に見る（途中で配列から消しても、番号がずれないようにするため）
         for (let i = items.length - 1; i >= 0; i--) {
             const it = items[i];
             if (running) it.y += it.vy * dt;
@@ -198,6 +219,8 @@
         if (running) requestAnimationFrame(loop);
     }
 
+    // 画面上の指・マウスの位置 → キャンバス上の位置に変換してカゴを動かす
+    //（キャンバスは画面幅に合わせて伸び縮みするので、比率 ratio で換算する）
     function moveTo(clientX) {
         const rect = canvas.getBoundingClientRect();
         const ratio = W / rect.width;
@@ -210,6 +233,7 @@
         }
     }
 
+    // 操作: マウス・タッチ（preventDefault で画面のスクロールを止める）・キーボード
     canvas.addEventListener('mousemove', (e) => moveTo(e.clientX));
     canvas.addEventListener('touchstart', (e) => { moveTo(e.touches[0].clientX); e.preventDefault(); }, { passive: false });
     canvas.addEventListener('touchmove', (e) => { moveTo(e.touches[0].clientX); e.preventDefault(); }, { passive: false });

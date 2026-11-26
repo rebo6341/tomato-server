@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """気象庁「2020年平年値（1991〜2020年）」から、ヨクソダテール用の基準データを作る。
 
+※【2026-11-16 の仕様変更で現在は不使用】
+  「平年値との比較」機能を廃止したため、このツールで作るデータはアプリから参照されていない。
+  機能を再開するときのために残している（サーバーの起動・動作には一切関係しない単独ツール）。
+
 使い方（サーバー上で実行）:
   1. 次のZIPを気象庁のページからダウンロードする（ダウンロードしたままのZIPでOK）
        https://www.data.jma.go.jp/obd/stats/data/mdrr/normal/index.html
@@ -52,13 +56,15 @@ for _c in range(11, 25):
 
 OK_REMARKS = {'8'}  # 正常値のみ採用（7=参考値は「平年差に利用できない」ため使わない）
 HOURLY_BASE = 7000  # 7100 = 01時の気温 ... 9400 = 24時の気温（標準偏差は +10）
-SFC_MAX_PREF_DISTANCE_KM = 20.0
+SFC_MAX_PREF_DISTANCE_KM = 20.0  # 気象官署の都道府県を、この距離以内の最寄りアメダスから決める
 
 
 # --------------------------------------------------
 # 入力（ZIP / フォルダを区別せず、ファイル名で引く）
 # --------------------------------------------------
 class Source:
+    """複数の ZIP / フォルダをまとめて「ファイル名 → 中身」で読めるようにする入れ物"""
+
     def __init__(self, paths):
         self.entries = defaultdict(list)  # basename -> [opener, ...]
         for p in paths:
@@ -78,10 +84,12 @@ class Source:
                 raise SystemExit(f'ZIPでもフォルダでもありません: {p}')
 
     def find(self, pattern):
+        """正規表現に合うファイル名の一覧（名前順）"""
         rx = re.compile(pattern)
         return sorted(fn for fn in self.entries if rx.match(fn))
 
     def read_text(self, fn):
+        """ファイルを文字列で読む（UTF-8 → Shift_JIS(cp932) の順に試す）"""
         raw = self.entries[fn][0]()
         for enc in ('utf-8-sig', 'cp932'):
             try:
@@ -95,6 +103,7 @@ class Source:
 # 地点情報
 # --------------------------------------------------
 def _num(s):
+    """文字列 → 数値（空・数値でなければ None）"""
     s = s.strip()
     if not s:
         return None
@@ -126,7 +135,7 @@ def parse_station_index(text, kind):
         sid = parts[0].strip()
         if not re.fullmatch(r'\d{5}', sid):
             continue
-        name = parts[1].strip().replace('\u3000', '')
+        name = parts[1].strip().replace('　', '')
         lat = _deg_min(parts[4], parts[5])
         lon = _deg_min(parts[6], parts[7])
         if lat is None or lon is None:
@@ -140,6 +149,7 @@ def parse_station_index(text, kind):
 
 
 def haversine_km(lat1, lon1, lat2, lon2):
+    """緯度経度2点間の距離（km）。地球を半径 6371km の球として計算する"""
     r = 6371.0
     p1, p2 = math.radians(lat1), math.radians(lat2)
     dphi = p2 - p1
@@ -268,12 +278,15 @@ def parse_dekad_humidity(text):
 # メイン
 # --------------------------------------------------
 def write_json_gz(path, obj):
+    """obj を gzip 圧縮した JSON ファイルとして書き出す"""
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with gzip.open(path, 'wt', encoding='utf-8', compresslevel=9) as f:
         json.dump(obj, f, ensure_ascii=False, separators=(',', ':'))
 
 
 def main(argv=None):
+    """全体の流れ: 地点情報 → 気温の平年値 → 湿度の平年値 → 都道府県の割り当て
+    → 地点リスト → 初期地点の決定 → ファイルに書き出し"""
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('--src', nargs='+', required=True, help='気象庁のZIP または 展開済みフォルダ（複数可）')
     ap.add_argument('--out', default='reference_data', help='出力先フォルダ')

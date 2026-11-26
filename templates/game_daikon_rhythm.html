@@ -1,3 +1,16 @@
+{#
+  ==================================================
+  game_daikon_rhythm.html ― ミニゲーム「ダイコンリズム」（/games/rhythm）
+  --------------------------------------------------
+  ルール: 曲に合わせて4本のレーンに降ってくるノーツを、ヒットラインでタップする。
+          ずれが 0.07秒以内 = PERFECT / 0.15秒以内 = GOOD / それ以外・見逃し = MISS。
+          コンボが続くほど1回の得点が増える（50コンボで頭打ち）。
+  しくみ: 音楽（static/audio/daikon_rhythm.mp3）の再生位置 bgm.currentTime を「時計」として使い、
+          譜面 CHART の各ノーツの時刻 t と比べて位置・判定を決める。
+          ハイスコアはブラウザ（localStorage の daikonRhythmBest）に保存される。
+  操作:   レーンをタップ、または D / F / J / K キー
+  ==================================================
+-#}
 <!DOCTYPE html>
 <html lang="ja">
 <head>
@@ -83,16 +96,18 @@
     const msgEl = document.getElementById('message');
     const startBtn = document.getElementById('start-btn');
 
+    // 得点と判定の回数
     let score = 0, combo = 0, maxCombo = 0;
     let perfectCount = 0, goodCount = 0, missCount = 0;
     let best = Number(localStorage.getItem('daikonRhythmBest') || 0);
     bestEl.textContent = best;
 
-    let notes = [];
-    let noteIdx = 0;
+    let notes = [];      // 画面に出ているノーツ
+    let noteIdx = 0;     // 次に出す CHART.notes の番号
     let running = false;
-    let rafId = null;
+    let rafId = null;    // アニメーションのループの ID（止めるときに使う）
 
+    // 得点・表示・画面上のノーツをすべてリセット
     function resetGame() {
         score = 0; combo = 0; maxCombo = 0;
         perfectCount = 0; goodCount = 0; missCount = 0;
@@ -105,6 +120,7 @@
         judgeEl.className = 'rhythm-judge';
     }
 
+    // ノーツ1つを判定済みにし、得点・コンボ・表示を更新する（result: 'perfect' / 'good' / 'miss'）
     function judgeNote(n, result) {
         if (n.judged) return;
         n.judged = true;
@@ -128,8 +144,9 @@
         judgeEl.className = 'rhythm-judge ' + result;
     }
 
+    // 毎フレームの処理: ① 時刻が来たノーツを出す ② 位置を動かす ③ 見逃したノーツを MISS にする
     function spawnLoop() {
-        const t = bgm.currentTime;
+        const t = bgm.currentTime; // 曲の再生位置（秒）
         while (noteIdx < CHART.notes.length && CHART.notes[noteIdx].t - APPROACH <= t) {
             const note = CHART.notes[noteIdx];
             const el = document.createElement('div');
@@ -145,6 +162,7 @@
         for (let i = 0; i < notes.length; i++) {
             const n = notes[i];
             if (n.judged) continue;
+            // progress: 降り始め = 0、ヒットライン到達 = 1
             const progress = (t - (n.t - APPROACH)) / APPROACH;
             n.el.style.transform = `translateY(${progress * hitY}px)`;
             if (t - n.t > WINDOW_MISS_AUTO) {
@@ -157,6 +175,8 @@
         }
     }
 
+    // レーンをタップしたとき: そのレーンでいちばん時刻が近いノーツを探し、ずれの大きさで判定する
+    //（GOOD の範囲より遠ければ何もしない＝空振りは MISS にならない）
     function handleTap(laneIndex) {
         if (!running) return;
         const t = bgm.currentTime;
@@ -183,12 +203,14 @@
         });
     });
 
+    // キーボード操作: D F J K が左から順に4本のレーン
     const KEY_MAP = { d: 0, f: 1, j: 2, k: 3 };
     window.addEventListener('keydown', (e) => {
         const k = e.key.toLowerCase();
         if (k in KEY_MAP) handleTap(KEY_MAP[k]);
     });
 
+    // 曲が終わったら: 正確さ（PERFECT=1, GOOD=0.5）でランク S/A/B/C を決め、ハイスコアを保存
     function endGame() {
         running = false;
         if (rafId) cancelAnimationFrame(rafId);
@@ -226,6 +248,7 @@
             return;
         }
 
+        // 3・2・1 のカウントダウン（0.7秒ごと）
         let count = 3;
         msgEl.textContent = `まもなくスタート… ${count}`;
         await new Promise((resolve) => {

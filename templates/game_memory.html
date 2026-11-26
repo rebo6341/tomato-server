@@ -1,3 +1,12 @@
+{#
+  ==================================================
+  game_memory.html ― ミニゲーム「トマト神経衰弱」（/games/memory）
+  --------------------------------------------------
+  ルール: 16枚（8種類×2枚）のカードを2枚ずつめくり、同じ絵柄をそろえる。全8ペアでクリア。
+  しくみ: カードは <button>。1枚目をめくった時点でタイマー開始。
+          違う絵柄なら 0.75秒見せてから裏返す（その間は lock で他をめくれない）。
+  ==================================================
+-#}
 <!DOCTYPE html>
 <html lang="ja">
 <head>
@@ -61,14 +70,15 @@
     const msgEl = document.getElementById('message');
     const restartBtn = document.getElementById('restart-btn');
 
-    let deck = [];
-    let opened = [];
-    let matched = 0;
-    let turns = 0;
-    let lock = false;
+    let deck = [];         // 並び順（絵柄の配列）
+    let opened = [];       // いまめくっているカード（最大2枚）
+    let matched = 0;       // そろったペア数
+    let turns = 0;         // めくった回数（2枚で1回）
+    let lock = false;      // true の間はカードをめくれない
     let startTime = null;
     let timerId = null;
 
+    // 配列をランダムに並べ替える（フィッシャー–イェーツのシャッフル）
     function shuffle(arr) {
         for (let i = arr.length - 1; i > 0; i--) {
             const j = Math.floor(Math.random() * (i + 1));
@@ -90,6 +100,7 @@
         timerId = null;
     }
 
+    // 新しいゲームを準備する（カードを混ぜて並べ直し、表示をリセット）
     function build() {
         stopTimer();
         deck = shuffle([...FACES, ...FACES]);
@@ -116,6 +127,7 @@
         });
     }
 
+    // カードをタップしたとき: めくる → 2枚目なら同じ絵柄か判定
     function onFlip(btn) {
         if (lock) return;
         if (btn.classList.contains('is-open') || btn.classList.contains('is-matched')) return;

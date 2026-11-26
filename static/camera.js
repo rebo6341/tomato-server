@@ -1,3 +1,13 @@
+// ==================================================
+// ⚠️ camera.js ― 現在は使われていない古いファイル
+// --------------------------------------------------
+// どの HTML からも読み込まれていない（camera.html は <img src="/video_feed"> で映像を表示し、
+// 処理は camera.html の中の <script> に書いてある）。
+// 以前の ngrok 経由のカメラ表示で使っていたもので、下の URL も現在は使っていない。
+// 内容は参考のためにそのまま残している。
+//
+// （当時のしくみ）画像を1枚取得 → 表示が終わったら300ms後に次の1枚を取得…を繰り返して動画のように見せる
+// ==================================================
 const STREAM_URL = "https://basil-antics-papyrus.ngrok-free.dev/video_feed";
 const imgElement = document.getElementById("camera-feed");
 const loadingText = document.getElementById("loading-text");
@@ -27,7 +37,7 @@ imgElement.onerror = () => {
         console.error("画像の描画に失敗しました");
         loadingText.innerText = "カメラ映像の取得に失敗しました";
         loadingText.style.display = "block";
-        
+
         // エラー時は1秒待って再試行
         setTimeout(fetchNextFrame, 1000);
     }

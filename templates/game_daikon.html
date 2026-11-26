@@ -1,3 +1,27 @@
+{#
+  ==================================================
+  game_daikon.html ― ミニゲーム「ダイコンファイターズ」（/games/daikon）
+  --------------------------------------------------
+  ルール: 4体のダイコンファイターから1体を選び、CPU と対戦する格闘ゲーム。
+          先に2ラウンド取った方の勝ち。1ラウンド99秒（時間切れは体力が多い方の勝ち）。
+  画面:   fbSelect（キャラ選択）と fbBattle（対戦）を切り替えて使う。
+  操作:   A/D 移動・W ジャンプ（2段まで）・S しゃがみ・J 弱攻撃・K 強攻撃・L 大根弾・
+          I 掴み・U 必殺（ゲージ満タン時）・B ガード。スマホは画面下のボタン。
+
+  【スクリプトの並び】
+    1. ファイターの絵（SVG をポーズごとに組み立てる関数）
+    2. 4体のキャラ設定（速さ・攻撃力・防御力・見た目）
+    3. 画面サイズに合わせた大きさ・速さの計算（computeScale）
+    4. 画面切替・キャラ選択カード
+    5. ファイターの作成・ポーズ（アクション）の切り替え・アニメーション
+    6. ラウンド開始・体力表示（HUD）
+    7. プレイヤーの操作 / CPU の考え方 / 物理（重力・移動）
+    8. 攻撃・大根弾・必殺技・ダメージ・エフェクト
+    9. メインループ・ラウンド終了・ゲーム開始
+   10. キーボード / ボタンの入力
+  ※ <style> の中に「{」と「#」を続けて書かないこと（Jinja2 のコメントと誤解されて 500 エラーになる）
+  ==================================================
+-#}
 <!DOCTYPE html>
 <html lang="ja">
 <head>
@@ -154,11 +178,11 @@
 
 <script>
 (function () {
-    const $ = id => document.getElementById(id);
-    const arena = $('fbArena');
-    const AW = () => arena.clientWidth;
-    const AH = () => arena.clientHeight;
-    const GROUND_FRAC = 0.14;
+    const $ = id => document.getElementById(id);   // $('id') で要素を取る短縮形
+    const arena = $('fbArena');                     // 戦う場所（ステージ）
+    const AW = () => arena.clientWidth;             // ステージの幅（画面サイズで変わるので毎回測る）
+    const AH = () => arena.clientHeight;            // ステージの高さ
+    const GROUND_FRAC = 0.14;                       // 地面の高さ（ステージの高さの 14%）
 
     // --------------------------------------------------
     // 🌱 立ち絵：ヨクソダテールのミニトマト/ダイコンのマスコット(SVG)と
@@ -167,12 +191,14 @@
     //    ひと目で見分けられるようにしたファイター
     //    ・PNG画像の差し替えではなく、ポーズごとにSVGを組み立てて描画する方式
     // --------------------------------------------------
+    // 胴体（sx, sy で横・縦に伸び縮みさせて体型を変える）
     function daikonBodyPath(fill,outline,sx,sy){
       fill=fill||'#fbf8ef'; outline=outline||'#2a2016'; sx=sx||1; sy=sy||1;
       return `<g transform="translate(62 77) scale(${sx} ${sy}) translate(-62 -77)">
         <path d="M30 46 Q28 16 62 14 Q96 16 94 46 L90 108 Q86 138 62 141 Q38 138 34 108 Z" fill="${fill}" stroke="${outline}" stroke-width="4" stroke-linejoin="round"/>
       </g>`;
     }
+    // 葉っぱ（mode: 'normal' 丸い葉 / 'compact' 小さめ / 'sharp' とがった葉。tilt で傾ける）
     function daikonLeavesSvg(tilt,accent,center,mode,outline){
       const t=tilt||0, a=accent||'#3f9c5c', c=center||'#4caf6b', o=outline||'#2a2016';
       if(mode==='compact'){
@@ -197,11 +223,13 @@
         <ellipse cx="72" cy="7" rx="6" ry="11" fill="#8fe07a" opacity="0.6" transform="rotate(10 72 7)"/>
       </g>`;
     }
+    // 手足（太い線を2本重ねて「黒い輪郭つきの白い腕」にする）
     function daikonLimb(x1,y1,x2,y2,w,fill,outline){
       w=w||16; fill=fill||'#fbf8ef'; outline=outline||'#2a2016';
       return `<path d="M${x1} ${y1} L${x2} ${y2}" stroke="${outline}" stroke-width="${w+5}" stroke-linecap="round"/>`+
              `<path d="M${x1} ${y1} L${x2} ${y2}" stroke="${fill}" stroke-width="${w}" stroke-linecap="round"/>`;
     }
+    // 顔（kind: attack 攻撃 / hit 被弾 / ko やられ / win 勝利 / guard ガード / それ以外は通常）
     function daikonFace(kind,outline){
       const o=outline||'#2a2016';
       switch(kind){
@@ -233,6 +261,7 @@
     // pose(アクション名) ごとの見た目の差分回数。walk/back は2コマで葉を左右に揺らす
     const POSE_FRAMES={idle:1,walk:2,back:2,crouch:1,jump:1,air:1,dash:1,light:1,heavy:1,throw:1,kick:1,slide:1,super:1,hit:1,launch:1,win:1};
     // キャラクターの見た目差分（体型・葉の形・アクセサリー）
+    //   pose（ポーズ）ごとに手足の位置・葉の傾き・顔を決め、キャラ c の色・体型・装飾で1枚の SVG にする
     function daikonPoseSvg(pose,c,frame){
       c=c||{};
       const accent=c.accent||'#3f9c5c', center=c.center||'#4caf6b';
@@ -297,7 +326,10 @@
       </svg>`;
     }
 
+    // アクションごとのアニメーションの速さ（1コマのミリ秒）
     const actions={idle:430,walk:105,back:105,crouch:140,jump:110,air:110,dash:80,light:70,heavy:95,kick:85,throw:90,slide:80,super:130,hit:70,launch:90,getup:120,win:500,lose:500};
+    // 4体のファイター。speed=移動の速さ / power=攻撃力 / def=防御力（どれも1.0が標準）
+    //   desc=説明、bodyFill/outline/accent/center=色、scaleX/scaleY=体型、leafMode=葉の形、extra=装飾の SVG
     const chars=[
     {name:'DAIKON SPEED',speed:1.22,power:.92,def:.92,desc:'高速型',
       bodyFill:'#fbf8ef',outline:'#2a2016',accent:'#3fd6b0',center:'#4caf6b',scaleX:0.9,scaleY:1.06,leafMode:'normal',
@@ -312,11 +344,13 @@
       bodyFill:'#d3c9e6',outline:'#241a33',accent:'#4a3466',center:'#2e2148',scaleX:0.9,scaleY:1.02,leafMode:'sharp',
       extra:()=>'<path d="M40 78 Q62 90 84 78 L84 88 Q62 100 40 88 Z" fill="#241a33"/><path d="M84 82 L98 74 M84 84 L96 92" stroke="#241a33" stroke-width="5" stroke-linecap="round"/>'}];
 
+    // chosen=選んだキャラの番号 / keys=押されているキー / g=対戦中の状態（対戦していなければ null）/ raf=ループの ID
     let chosen=0,keys={},g=null,raf=0;
 
     // ---- 対戦カード(コンテナ)のサイズに合わせて全ての距離パラメータを縮尺する ----
     let FIGHTER_W=76, FIGHTER_H=96, CENTER=38, SCALE=0.6, X_MARGIN=20;
     let GRAVITY=930, JUMP_VY=360, MOVE_SPEED=204, CPU_SPEED=138;
+    // 技の性能: dmg=ダメージ / range=届く距離 / cool=次に攻撃できるまでの秒 / stun=相手が動けない秒 / knock=吹き飛ばす強さ
     let attackData={};
     function computeScale(){
       FIGHTER_W=Math.min(92,Math.max(56,Math.round(AW()*0.22)));
@@ -337,7 +371,9 @@
       };
     }
 
+    // 画面の切り替え（fbSelect / fbBattle のどちらか1つだけ表示）
     function show(id){document.querySelectorAll('.fb-screen').forEach(e=>e.classList.remove('active'));$(id).classList.add('active')}
+    // キャラ選択カードを描く（ステータスのバーは、4体の中の最大値を 100% として表示）
     function buildCards(){
       const box=$('fbCards'); box.innerHTML='';
       chars.forEach((c,i)=>{
@@ -352,6 +388,8 @@
       });
     }
 
+    // ファイターを1体作ってステージに置く。f が持つ主な状態:
+    //   x,y=位置 / vx,vy=速さ / hp=体力 / meter=必殺ゲージ / dir=向き(1右,-1左) / action=いまのポーズ
     function createFighter(id,c,x,enemy){
       let e=document.createElement('div'); e.className='fb-fighter';
       e.style.width=FIGHTER_W+'px'; e.style.height=FIGHTER_H+'px';
@@ -361,12 +399,14 @@
       setAction(f,'idle');
       return f;
     }
+    // ポーズを切り替えて絵を描き直す。duration（ミリ秒）を付けると、その時間後に待機ポーズへ戻る
     function setAction(f,a,duration=0){
       if(!f||(f.ko&&a!=='lose'&&a!=='launch'))return;
       if(f.action===a&&!duration)return;
       f.action=a; f.actionStart=performance.now(); f.frame=0; f.img.innerHTML=daikonPoseSvg(a,f.c,0);
       f.actionUntil=duration?performance.now()+duration:0;
     }
+    // 歩きなどのコマ送りと、時間切れのポーズを待機に戻す処理
     function animate(f,now){
       let frames=POSE_FRAMES[f.action]||POSE_FRAMES.idle;
       let rate=actions[f.action]||100;
@@ -374,17 +414,20 @@
       if(f.actionUntil&&now>=f.actionUntil&&!f.ko&&!f.guard&&!f.crouch){setAction(f,'idle');idx=0}
       if(idx!==f.frame){f.frame=idx;f.img.innerHTML=daikonPoseSvg(f.action,f.c,idx)}
     }
+    // 対戦を片付ける（ループを止め、ファイター・エフェクト・弾をステージから消す）
     function cleanupFighters(){
       cancelAnimationFrame(raf);
       arena.querySelectorAll('.fb-fighter,.fb-fx,.fb-superfx,.fb-projectile').forEach(e=>e.remove());
       $('fbAnnounce').textContent='';
       g=null;
     }
+    // 画面中央に大きく文字を出し、ms ミリ秒後に消して cb（次の処理）を呼ぶ
     function announce(t,ms,cb){
       $('fbAnnounce').textContent=t;
       setTimeout(()=>{if($('fbAnnounce').textContent===t){$('fbAnnounce').textContent='';if(cb)cb()}},ms);
     }
 
+    // 次のラウンドの準備（2体を両端に戻して体力・ゲージを満タンに）→「ROUND n」「FIGHT!」
     function resetRound(){
       computeScale();
       let p=g.player,c=g.cpu;
@@ -396,6 +439,7 @@
       syncHud();
       announce('ROUND '+g.round,650,()=>announce('FIGHT!',500,()=>g.active=true));
     }
+    // 画面上部の表示（体力バー・必殺ゲージ・残り時間・取ったラウンド ●）を更新
     function syncHud(){
       if(!g)return;
       $('fbPHp').style.width=Math.max(0,g.player.hp)+'%';
@@ -406,6 +450,8 @@
       $('fbPRounds').textContent='●'.repeat(g.pWins)+'○'.repeat(2-g.pWins);
       $('fbCRounds').textContent='●'.repeat(g.cWins)+'○'.repeat(2-g.cWins);
     }
+    // プレイヤーの操作を反映（ガード → しゃがみ/移動 → ジャンプ → 各種攻撃の順に見る）
+    //   ジャンプや攻撃のキーは1回使ったら false に戻す（押しっぱなしで連発しないように）
     function updatePlayer(f,e,dt){
       if(f.ko)return;
       f.guard=!!keys.b&&f.onGround&&!f.crouch&&!f.attackCd;
@@ -422,6 +468,8 @@
       if(keys.i){attack(f,e,'grab');keys.i=false}
       if(keys.u&&f.meter>=100){special(f,e);keys.u=false}
     }
+    // CPU の動き: 遠ければ近づく。0.25〜0.9秒ごとに、距離に応じて
+    //   近い→攻撃 / 中距離→大根弾 / ゲージ満タン→必殺 / たまにジャンプ・ガード をランダムに選ぶ
     function updateCPU(f,p,dt){
       if(f.ko)return;
       f.guard=false;
@@ -442,6 +490,7 @@
         f.aiTimer=.25+Math.random()*.65;
       }
     }
+    // 物理: タイマーを減らす → 重力で落とす → 位置を動かす → 着地判定 → ステージの外に出さない → 画面に反映
     function physics(f,dt){
       if(f.stun>0)f.stun=Math.max(0,f.stun-dt);
       f.attackCd=Math.max(0,f.attackCd-dt);
@@ -460,6 +509,7 @@
       if(f.crouch&&f.onGround)setAction(f,'crouch');
       animate(f,performance.now());
     }
+    // 近接攻撃（a が b を攻撃）。少し遅れて（技の出るまでの時間）距離と向きを確かめ、当たればダメージ
     function attack(a,b,type){
       let d=attackData[type];
       if(!d||a.ko||a.attackCd>0||a.stun>0)return;
@@ -474,6 +524,7 @@
         }
       },delay);
     }
+    // 大根弾: 前に飛ぶ弾を作り、相手に当たるか約1.8秒たつまで動かす
     function projectile(a,b){
       if(a.ko||a.attackCd>.08||a.stun>0)return;
       a.attackCd=.65;
@@ -496,6 +547,7 @@
       }
       go();
     }
+    // 必殺技（ゲージ満タンで使える）: キック → スライド → フラッシュ の順に替わり、3回連続で判定する
     function special(a,b){
       if(a.ko||a.meter<100||a.stun>0)return;
       a.meter=0; a.attackCd=1.35;
@@ -512,6 +564,9 @@
         },i*105);
       },170);
     }
+    // ダメージ計算（v がやられる側、a が攻撃した側）
+    //   ダメージ = 基本値 × 攻撃側の power ÷ やられる側の def（ガード中は 35%）
+    //   受けた側は必殺ゲージが多めにたまる。体力 0 で KO
     function damage(v,a,base,isSuper,knock,stun){
       if(v.ko||v.inv>0)return;
       let mult=v.guard?.35:1;
@@ -526,6 +581,7 @@
       fx(v.x+CENTER,AH()*GROUND_FRAC+v.y+FIGHTER_H*0.45,Math.round(dmg),isSuper);
       if(v.hp<=0){v.ko=true;v.guard=false;setAction(v,'launch',999999)}
     }
+    // 当たったときの文字エフェクト（HIT! / CRITICAL! / K.O. BURST!）
     function fx(x,b,t,superHit){
       let e=document.createElement('div');
       e.className=superHit?'fb-superfx':'fb-fx';
@@ -534,6 +590,7 @@
       arena.appendChild(e);
       setTimeout(()=>e.remove(),superHit?560:360);
     }
+    // メインループ（毎フレーム）: 時間を減らす → 操作・CPU → 物理 → KO 判定 → 表示更新
     function loop(now){
       if(!g)return;
       let dt=Math.min(.033,(now-g.last)/1000); g.last=now;
@@ -550,6 +607,7 @@
       }
       raf=requestAnimationFrame(loop);
     }
+    // ラウンド終了（w: 'p' プレイヤーの勝ち / 'c' CPU の勝ち）。2勝したら試合終了、まだなら次のラウンドへ
     function endRound(w){
       if(!g||!g.active)return;
       g.active=false;
@@ -570,13 +628,14 @@
         }
       }),350);
     }
+    // 試合開始: CPU は自分以外の3体からランダムに選ばれる
     function startGame(){
       cleanupFighters();
       computeScale();
       show('fbBattle');
       $('fbControls').style.display='flex';
       $('fbPostgame').classList.remove('is-visible');
-      $('fbMessage').textContent='\u00a0';
+      $('fbMessage').textContent=' ';
       let pc=chars[chosen], ci=(chosen+1+Math.floor(Math.random()*3))%chars.length, cc=chars[ci];
       g={round:1,pWins:0,cWins:0,time:99,last:performance.now(),active:false,
         player:createFighter('p',pc,X_MARGIN,false),
@@ -588,6 +647,7 @@
       raf=requestAnimationFrame(loop);
     }
 
+    // ---- ボタン・キーボードの入力 ----
     $('fbBattleBtn').onclick=startGame;
     $('fbRetryBtn').onclick=startGame;
     $('fbSelectBtn').onclick=()=>{cleanupFighters();show('fbSelect')};
@@ -601,6 +661,7 @@
     });
     document.addEventListener('keyup',e=>{keys[e.key.toLowerCase()]=false});
 
+    // 画面のボタン: 押している間だけ、対応するキーが押されたことにする
     document.querySelectorAll('.fb-btn').forEach(btn=>{
       const key=btn.dataset.key;
       const press=ev=>{ev.preventDefault();btn.classList.add('is-pressed');keys[key]=true;btn.setPointerCapture&&btn.setPointerCapture(ev.pointerId)};
@@ -610,8 +671,10 @@
       btn.addEventListener('pointercancel',release,{passive:false});
       btn.addEventListener('pointerleave',ev=>{if(ev.buttons===0)release(ev)},{passive:false});
     });
+    // 別のアプリ・タブに切り替えたら、押しっぱなし状態を解除する（キャラが勝手に動き続けないように）
     window.addEventListener('blur',()=>{keys={};document.querySelectorAll('.fb-btn.is-pressed').forEach(b=>b.classList.remove('is-pressed'))});
     document.addEventListener('visibilitychange',()=>{if(document.hidden)keys={}});
+    // 画面サイズが変わったら、ファイターがステージの外に出ないように位置を直す
     window.addEventListener('resize',()=>{
       if(!g)return;
       const maxX=Math.max(X_MARGIN,AW()-FIGHTER_W-X_MARGIN);

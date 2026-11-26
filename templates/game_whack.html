@@ -1,3 +1,12 @@
+{#
+  ==================================================
+  game_whack.html ― ミニゲーム「トマトたたき」（/games/whack）
+  --------------------------------------------------
+  ルール: 30秒間、9つの穴に出てくる 🍅 をタップすると +1点。🐛（害虫）は −2点（0点未満にはならない）。
+  しくみ: 0.78秒ごとに穴を全部空にして、1〜2か所（35% の確率で2か所）に新しく出す。
+          害虫が出る確率は 28%。
+  ==================================================
+-#}
 <!DOCTYPE html>
 <html lang="ja">
 <head>
@@ -71,6 +80,7 @@
     let popTimer = null;
     let countTimer = null;
 
+    // 穴（ボタン）を9個作る
     for (let i = 0; i < HOLES; i++) {
         const b = document.createElement('button');
         b.type = 'button';
@@ -82,12 +92,14 @@
         holes.push(b);
     }
 
+    // 穴を空にする
     function clearHole(b) {
         b.textContent = '';
         b.dataset.kind = '';
         b.classList.remove('is-up', 'is-bomb');
     }
 
+    // 全部の穴を空にしてから、ランダムな穴（重ならないように）にトマトか害虫を出す
     function pop() {
         holes.forEach(clearHole);
         const count = Math.random() < 0.35 ? 2 : 1;
@@ -104,6 +116,7 @@
         }
     }
 
+    // 穴をタップしたときの得点計算
     function onHit(b) {
         if (!running || !b.dataset.kind) return;
         if (b.dataset.kind === 'tomato') {
@@ -117,6 +130,7 @@
         clearHole(b);
     }
 
+    // 時間切れ: タイマーを止めて結果とハイスコアを表示
     function stop() {
         running = false;
         clearInterval(popTimer);
@@ -128,6 +142,7 @@
         startBtn.querySelector('.btn-label').textContent = '▶ もう一度あそぶ';
     }
 
+    // スタート: 0.78秒ごとに出現、1秒ごとに残り時間を減らす
     function start() {
         if (running) return;
         running = true;

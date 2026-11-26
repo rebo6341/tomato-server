@@ -1,3 +1,17 @@
+{#
+  ==================================================
+  camera.html ― カメラ映像・撮影・写真ギャラリー（/camera）
+  --------------------------------------------------
+  【映像】<img src="/video_feed"> だけで動画が表示される（MJPEG という形式。
+          サーバーの app.py がラズパイの cam_server.py から受け取って中継している）。
+  【処理】このファイルの下の <script> に書いてある（camera.js は使っていない）。
+    ・同時視聴者数のバッジ
+    ・「写真を撮る」ボタン → /api/camera/snapshot
+    ・撮影した写真の一覧と削除
+    他の端末での撮影・削除・視聴者の増減は Socket.IO で届いて、すぐ反映される。
+  ※ 撮影・ギャラリーはダイコン固定（2026-11-16 に品目切替を廃止）。
+  ==================================================
+-#}
 <!DOCTYPE html>
 <html lang="ja">
 <head>
@@ -95,14 +109,6 @@
             <div id="viewer-badge" class="status-badge online viewer-badge">👀 0人視聴中</div>
         </div>
 
-        {# 【仕様変更 2026-11-16】現在の栽培品目の切替を廃止（撮影はダイコン固定）
-        <div class="crop-switch-row">
-            <span class="crop-switch-label">現在の栽培品目（撮影対象）</span>
-            <select id="current-crop-select" class="crop-select"></select>
-        </div>
-        <p id="current-crop-status" class="camera-action-status" style="margin: 0 4px 10px; text-align:left;"></p>
-        #}
-
         <div class="camera-stream-wrapper">
             <img id="camera-feed" class="camera-feed"
                 src="{{ url_for('video_feed') }}"
@@ -129,99 +135,23 @@
     </div>
 
     <script>
+        // サーバーからのリアルタイム通知（視聴者数・ギャラリー更新）を受け取る
         const socket = io();
         const galleryDiv = document.getElementById('photo-gallery');
         const snapshotBtn = document.getElementById('snapshot-btn');
         const snapshotStatus = document.getElementById('snapshot-status');
         const viewerBadge = document.getElementById('viewer-badge');
 
-        // 【仕様変更 2026-11-16】現在の栽培品目の切替を廃止（撮影・ギャラリーはダイコン固定）
-        // const currentCropSelect = document.getElementById('current-crop-select');
-        // const currentCropStatus = document.getElementById('current-crop-status');
-        // const CROP_LABELS_FALLBACK = { tomato: 'ミニトマト', daikon: 'ダイコン' };
-        //
-        // function getCropLabels() {
-        //     return (window.CropSwitcher && window.CropSwitcher.LABELS) || CROP_LABELS_FALLBACK;
-        // }
-        //
-        // function renderCurrentCropSelect(selected) {
-        //     if (!currentCropSelect) return;
-        //     const labels = getCropLabels();
-        //     currentCropSelect.innerHTML = '';
-        //     Object.keys(labels).forEach((crop) => {
-        //         const opt = document.createElement('option');
-        //         opt.value = crop;
-        //         opt.textContent = labels[crop];
-        //         if (crop === selected) opt.selected = true;
-        //         currentCropSelect.appendChild(opt);
-        //     });
-        //     if (window.CropSwitcher && window.CropSwitcher.applyIcon) window.CropSwitcher.applyIcon(currentCropSelect);
-        // }
-        //
-        // function fetchCurrentCrop() {
-        //     if (!currentCropSelect) return;
-        //     fetch('/api/crop/current')
-        //         .then((res) => res.json())
-        //         .then((data) => renderCurrentCropSelect(data.crop))
-        //         .catch(() => renderCurrentCropSelect('tomato'));
-        // }
-        //
-        // if (currentCropSelect) {
-        //     currentCropSelect.addEventListener('change', () => {
-        //         const newCrop = currentCropSelect.value;
-        //         const labels = getCropLabels();
-        //         const confirmed = confirm(
-        //             `品目を「${labels[newCrop] || newCrop}」に切り替えますか？\n` +
-        //             '以後、センサーデータの書き込み先と撮影・ギャラリーの対象がこちらに変わります。'
-        //         );
-        //         if (!confirmed) {
-        //             fetchCurrentCrop();
-        //             return;
-        //         }
-        //
-        //         currentCropSelect.disabled = true;
-        //         fetch('/api/crop/current', {
-        //             method: 'POST',
-        //             headers: { 'Content-Type': 'application/json' },
-        //             body: JSON.stringify({ crop: newCrop }),
-        //         })
-        //             .then((res) => res.json().then((data) => ({ ok: res.ok, data })))
-        //             .then(({ ok, data }) => {
-        //                 if (ok) {
-        //                     currentCropStatus.innerText = `切り替えました: ${data.label}`;
-        //                     currentCropStatus.style.color = '#2e7d32';
-        //                     fetchGallery();
-        //                 } else {
-        //                     currentCropStatus.innerText = `エラー: ${data.message || '切替に失敗しました。'}`;
-        //                     currentCropStatus.style.color = '#ffdada';
-        //                     fetchCurrentCrop();
-        //                 }
-        //             })
-        //             .catch((err) => {
-        //                 console.error('現在の栽培品目切替エラー:', err);
-        //                 currentCropStatus.innerText = '通信エラーが発生しました。';
-        //                 currentCropStatus.style.color = '#ffdada';
-        //                 fetchCurrentCrop();
-        //             })
-        //             .finally(() => {
-        //                 currentCropSelect.disabled = false;
-        //             });
-        //     });
-        // }
-        //
-        // socket.on('current_crop_updated', (data) => {
-        //     renderCurrentCropSelect(data.crop);
-        //     fetchGallery();
-        // });
-
         // --------------------------------------------------
         // 👀 同時視聴者数の表示
         // --------------------------------------------------
+        // バッジの数字を書き換える
         function updateViewerBadge(count) {
             if (!viewerBadge) return;
             viewerBadge.textContent = `👀 ${count}人視聴中`;
         }
 
+        // ページを開いた直後の視聴者数を取得する（以後の変化は Socket.IO で届く）
         function fetchViewerCount() {
             fetch('/api/camera/viewers')
                 .then((res) => res.json())
@@ -232,6 +162,10 @@
         // 他の端末の入退室があるたびにリアルタイムで反映
         socket.on('camera_viewer_count', (data) => updateViewerBadge(data.count));
 
+        // --------------------------------------------------
+        // 📸 写真ギャラリー
+        // --------------------------------------------------
+        // 写真の一覧を取得して並べ、それぞれの ✕ ボタンに削除処理をつける
         function fetchGallery() {
             fetch('/api/camera/photos')
                 .then((res) => res.json())
@@ -263,6 +197,7 @@
                 });
         }
 
+        // 確認してから写真を削除し、一覧を取り直す
         function deletePhoto(id) {
             if (!confirm('この写真を削除しますか？')) return;
             fetch(`/api/camera/photos/${id}`, { method: 'DELETE' })
@@ -273,11 +208,13 @@
 
         const SNAPSHOT_DEFAULT_LABEL = '📸 写真を撮る';
 
+        // 撮影ボタンを押せる状態・元の文字に戻す
         function resetSnapshotButton() {
             snapshotBtn.disabled = false;
             snapshotBtn.innerText = SNAPSHOT_DEFAULT_LABEL;
         }
 
+        // 「写真を撮る」: ボタンを「撮影中」にする → サーバーに撮影を頼む → 成功なら1.5秒「保存しました」
         snapshotBtn.addEventListener('click', async () => {
             snapshotBtn.disabled = true;
             snapshotBtn.innerText = '📸 撮影中...';
@@ -312,7 +249,6 @@
         // 初期表示
         fetchGallery();
         fetchViewerCount();
-        // fetchCurrentCrop(); // 【仕様変更 2026-11-16】品目切替を廃止
     </script>
 </body>
 </html>

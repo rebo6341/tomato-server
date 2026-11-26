@@ -1,9 +1,37 @@
+// ==================================================
+// app.js ― ダッシュボード（index.html）の処理
+// --------------------------------------------------
+// 【この画面でやること】
+//   1. 最新のセンサー値（気温・湿度・土壌湿度）と直近10件のログを表示する
+//   2. マスコット（ミニトマト / ダイコン）の表情を、サーバーの判定に合わせて切り替える
+//   3. AI コメントを表示し、「状況を聴く」ボタンで音声（ずんだもん → あんこもん）を再生する
+//   4. ラズパイ・センサー・カメラのオンライン状態を表示する
+//   5. データ収集間隔（秒）を変更する
+//
+// 【画面が更新されるタイミング】
+//   ・ページを開いたとき
+//   ・データ収集間隔ごと（setInterval でポーリング）
+//   ・サーバーから Socket.IO の 'sensor_db_updated' が届いたとき（新しいデータが保存された瞬間）
+//
+// 【読み込み順】index.html で crop.js → reference.js → app.js の順に読み込む。
+//   window.CropSwitcher（crop.js）と window.Reference（reference.js）をここで使う。
+//
+// 【このファイルの並び】
+//   オフライン判定の設定 → 色の計算 → ボタン表示 → Socket.IO → AI コメント・音声
+//   → マスコット（トマト / ダイコンの SVG）→ オンライン状態 → データ取得と描画
+//   → 「状況を聴く」→ ログの折りたたみ → データ収集間隔 → 品目切替 → 起動時の処理
+// ==================================================
+
+// --------------------------------------------------
+// ⏱️ 「データが古い（通信が止まっている）」とみなす時間
+// --------------------------------------------------
 // ラズパイ通信監視しきい値
 // 固定値ではなく「現在の送信間隔 × 倍率」で判定する（間隔設定が変わっても追従させるため）
 let sensorIntervalSeconds = 120; // サーバーから取得できるまでの暫定値
 const OFFLINE_THRESHOLD_MULTIPLIER = 2.5; // 何回分の送信を逃したらオフライン扱いにするか
 const OFFLINE_THRESHOLD_MIN_MS = 30000; // どんなに間隔が短くても最低30秒は待つ
 
+// しきい値（ミリ秒）= max(30秒, 送信間隔 × 2.5)。例: 間隔120秒なら300秒
 function getOfflineThresholdMs() {
     return Math.max(
         OFFLINE_THRESHOLD_MIN_MS,
@@ -22,6 +50,7 @@ const COLOR_STOPS = ['#2196f3', '#8bc34a', '#22b573', '#f2c200', '#e53935'];
 // ※ 色を決める基準（作物の適正範囲）はサーバー(reference.py)にあり、
 //    数値カードの色付け・判定表示は reference.js が行う。ここには基準の数値を持たない。
 
+// '#2196f3' → [33, 150, 243] のように、色コードを赤・緑・青の数値に分解する
 function hexToRgb(hex) {
     const h = hex.replace('#', '');
     return [
@@ -31,6 +60,7 @@ function hexToRgb(hex) {
     ];
 }
 
+// 2色を t（0〜1）の割合で混ぜる。t=0 なら A、t=1 なら B、0.5 ならちょうど中間の色
 function mixColor(hexA, hexB, t) {
     const a = hexToRgb(hexA);
     const b = hexToRgb(hexB);
@@ -39,6 +69,8 @@ function mixColor(hexA, hexB, t) {
 }
 
 // 値を 青→黄緑→緑→黄色→赤 のグラデーション上の色に変換する
+//   min 以下は青、max 以上は赤、ちょうど真ん中は緑。値が無ければ ''（色なし）
+//   しくみ: 0〜1 の割合にして、5色の間の4区間のどこにいるかを求め、その区間の2色を混ぜる
 function valueToColor(value, min, max) {
     if (value === null || value === undefined || isNaN(value)) return '';
     const ratio = Math.max(0, Math.min(1, (value - min) / (max - min)));
@@ -55,6 +87,7 @@ window.valueToColor = valueToColor;
 // --------------------------------------------------
 // ボタンのラベル操作（⑦ iOS で四角が出ないよう span を書き換える）
 // --------------------------------------------------
+// ボタンの文字を変える（中に <span class="btn-label"> があればそちらを書き換える）
 function setBtnLabel(button, text) {
     if (!button) return;
     const label = button.querySelector('.btn-label');
@@ -62,31 +95,17 @@ function setBtnLabel(button, text) {
     else button.textContent = text;
 }
 
+// ボタンの今の文字を読む（再生が終わったら元の文字に戻すため）
 function getBtnLabel(button) {
     if (!button) return '';
     const label = button.querySelector('.btn-label');
     return label ? label.textContent : button.textContent;
 }
 
-// 【仕様変更 2026-11-16】自動読み上げを廃止
-// // 💡 自動読み上げトグルの初期化設定（初期値：OFF）
-// const autoplayToggle = document.getElementById('autoplay-toggle');
-// const autoplayStatusText = document.getElementById('autoplay-status-text');
-//
-// if (autoplayToggle) {
-//     autoplayToggle.checked = false; // 初期設定は OFF に固定
-//
-//     autoplayToggle.addEventListener('change', () => {
-//         if (autoplayToggle.checked) {
-//             autoplayStatusText.innerText = '🔊 自動読み上げ: ON';
-//             autoplayStatusText.style.color = '#2e7d32'; // 緑色
-//         } else {
-//             autoplayStatusText.innerText = '🔊 自動読み上げ: OFF';
-//             autoplayStatusText.style.color = '#666'; // グレー
-//         }
-//     });
-// }
-
+// --------------------------------------------------
+// 📡 リアルタイム通知（Socket.IO）
+//    io() は index.html で CDN から読み込んだ socket.io ライブラリの関数
+// --------------------------------------------------
 // 💡 1. Socket.IO 接続の初期化
 const socket = io();
 
@@ -97,28 +116,14 @@ socket.on('sensor_db_updated', async (data) => {
     // 画面のデータ表示を即座に更新（表示中の品目に応じたデータを取得し直す）
     fetchDashboardData();
     fetchDeviceStatus();
-
-    // 【仕様変更 2026-11-16】自動読み上げを廃止
-    // // 🌱 今回のデータが「表示中の品目」以外のものであれば、読み上げは行わない
-    // const viewingCrop = window.CropSwitcher ? window.CropSwitcher.getViewCrop() : 'daikon';
-    // if (data.crop && data.crop !== viewingCrop) {
-    //     return;
-    // }
-    //
-    // // ⚠️ 自動読み上げスイッチが OFF の場合は音声再生をスキップ
-    // if (!autoplayToggle || !autoplayToggle.checked) {
-    //     console.log('🔇 自動読み上げがOFFのため、再生をスキップしました');
-    //     return;
-    // }
-    //
-    // // AI解析テキストが存在する場合、自動連続読み上げを実行
-    // if (data.ai_analysis) {
-    //     const { zundaText, ankoText } = parseAiComment(data.ai_analysis);
-    //     await autoPlayVoiceSequence(zundaText, ankoText);
-    // }
 });
 
+// --------------------------------------------------
+// 🤖 AI コメントの整形と音声再生
+// --------------------------------------------------
 // AIコメントのテキストを「状況（ずんだもん用）」と「対策（あんこもん用）」に分解する関数
+//   例: '【状況】暑いのだ。【対策】日陰を作るもん。'
+//       → { zundaText: '暑いのだ。', ankoText: '日陰を作るもん。' }
 function parseAiComment(comment) {
     let zundaText = '';
     let ankoText = '';
@@ -143,31 +148,16 @@ function formatAiComment(comment) {
         .trim();
 }
 
-// 【仕様変更 2026-11-16】自動読み上げ用の関数。「状況を聴く」ボタンは speakAll() を使う
-// async function autoPlayVoiceSequence(zundaText, ankoText) {
-//     try {
-//         // ① ずんだもん（話者ID: 3）で【状況】を再生
-//         if (zundaText) {
-//             console.log('🔊 自動再生: ずんだもん', zundaText);
-//             await speakPromise(zundaText, 3, 'btn-zunda');
-//         }
-//
-//         // ② あんこもん（話者ID: 74）で【対策】を再生
-//         if (ankoText) {
-//             console.log('🔊 自動再生: あんこもん', ankoText);
-//             await speakPromise(ankoText, 74, 'btn-anko');
-//         }
-//     } catch (err) {
-//         console.error('自動再生エラー:', err);
-//     }
-// }
-
 // 音声生成・再生処理を行い、再生終了まで Promise で待機する関数
+//   ① サーバーの /generate-voice に文章と話者 ID を送り、WAV 音声を受け取る
+//   ② ブラウザで再生し、再生が終わったら resolve（次の再生へ進める）
+//   その間はボタンを押せなくし、表示を「生成中」→「再生中」→ 元の文字 と変える
 function speakPromise(text, speakerId, buttonId) {
     return new Promise(async (resolve, reject) => {
         const button = document.getElementById(buttonId);
         const originalText = getBtnLabel(button);
 
+        // 終了・エラー時にボタンと画面更新を元に戻す
         const restore = () => {
             isSpeaking = false;
             if (button) {
@@ -222,6 +212,10 @@ function speakPromise(text, speakerId, buttonId) {
 // --------------------------------------------------
 // 🍅 マスコット表情パターン（6種類）
 //    ① thirsty のヘタが本体から離れていたので、本体に食い込むよう修正
+//    キー（healthy など）はサーバーの /api/mascot/state が返す state と同じ名前。
+//      healthy=絶好調 / thirsty=カラカラ / overwatered=水分過多
+//      heat_tired=暑い / cold_shiver=寒い / humidity_warn=湿度注意
+//    中身は SVG（絵を図形の命令で描く形式）の文字列。
 // --------------------------------------------------
 const MASCOT_SVGS = {
     healthy: `<svg viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:100%;filter:drop-shadow(0 8px 14px rgba(0,0,0,0.12));">
@@ -312,6 +306,7 @@ const MASCOT_SVGS = {
     </svg>`,
 };
 
+// 表情ごとのバッジの文字・色（CSS クラス）・吹き出しのメッセージ（トマト・ダイコン共通）
 const MASCOT_INFO = {
     healthy:       { badgeText: 'HEALTHY・正常',  badgeClass: 'healthy', message: '土壌湿度はバッチリ！健康に育ってるよ' },
     thirsty:       { badgeText: 'CHECK・カラカラ', badgeClass: 'warning', message: '土壌がかなり乾燥してるよ。水やりをお願い！' },
@@ -326,8 +321,10 @@ const MASCOT_INFO = {
 //    参考イメージ（白い胴体＋葉の束＋太い黒アウトライン）に合わせたデザイン。
 //    体・葉・腕の基本形は共通にし、表情/傾き/色味だけを状態ごとに変えている。
 // --------------------------------------------------
+// ダイコンの胴体（白い体＋黒い輪郭）。全表情で共通
 const DAIKON_BODY = `<path d="M32 48 Q30 23 60 21 Q90 23 88 48 L84 90 Q80 116 60 119 Q40 116 36 90 Z" fill="#fbf8ef" stroke="#2a2016" stroke-width="3.2" stroke-linejoin="round"/>`;
 
+// ダイコンの葉の束を返す。tilt は傾ける角度（度）。しおれた表情などでマイナスにする
 function daikonLeaves(tilt) {
     const t = tilt || 0;
     return `<g transform="rotate(${t} 60 30)">
@@ -420,6 +417,8 @@ const DAIKON_MASCOT_SVGS = {
 };
 
 // マスコットの表情・バッジ・メッセージをまとめて更新する
+//   state: 表情の名前（healthy など）、crop: 'daikon' ならダイコン、それ以外はトマトの絵
+//   知らない state が来たら healthy（絶好調）の絵と文言にする
 function updateMascotExpression(state, crop) {
     const container = document.getElementById('mascot-hero-container');
     const badge = document.getElementById('health-badge');
@@ -445,6 +444,7 @@ if (mascotButton) {
 }
 
 // マスコットの表情状態だけを取得する(初回表示・ポーリング用)
+//   表情はサーバーが「直近5件の平均」で決める（ここでは判定しない）
 function fetchMascotState() {
     const crop = window.CropSwitcher ? window.CropSwitcher.getViewCrop() : 'daikon';
     const url = window.CropSwitcher ? window.CropSwitcher.withCrop('/api/mascot/state', crop) : '/api/mascot/state';
@@ -482,6 +482,8 @@ const DEVICE_STATUS_ITEMS = [
     { key: 'camera', id: 'status-camera', label: 'カメラ' },
 ];
 
+// バッジ3つを描き直す。data は {pi: true/false, sensor: ..., camera: ...}。
+// 取得に失敗したときは null が来て、3つとも「不明」になる
 function renderDeviceStatus(data) {
     DEVICE_STATUS_ITEMS.forEach((item) => {
         const el = document.getElementById(item.id);
@@ -497,6 +499,7 @@ function renderDeviceStatus(data) {
     });
 }
 
+// サーバーにオンライン状態を聞いてバッジを更新する（10秒ごと＋新しいデータが届いたとき）
 function fetchDeviceStatus() {
     return fetch('/api/device/status')
         .then((res) => {
@@ -510,14 +513,16 @@ function fetchDeviceStatus() {
         });
 }
 
+// --------------------------------------------------
+// 📊 ダッシュボードのメイン処理（データを取ってきて画面全体を描き直す）
+//    1. 古いデータかどうかの判定 → 2. 数値と色 → 3. AI コメント → 4. 直近10件のカード
+// --------------------------------------------------
 function fetchDashboardData() {
     // 音声生成・再生中なら画面更新をスキップ
     if (isSpeaking) return;
 
     // 直近10件を取得（表示中の品目分のみ）
     const viewCrop = window.CropSwitcher ? window.CropSwitcher.getViewCrop() : 'daikon';
-    // 【仕様変更 2026-11-16】土壌湿度の校正を廃止
-    // if (window.Reference) window.Reference.ensureCalibration(viewCrop);
     const dataUrl = window.CropSwitcher
         ? window.CropSwitcher.withCrop('/api/data?limit=10', viewCrop)
         : '/api/data?limit=10';
@@ -597,8 +602,10 @@ function fetchDashboardData() {
 // 🔊 「状況を聴く」ボタン（【仕様変更 2026-11-16】1ボタンに統一）
 //    ずんだもん（ID 3）で【状況】→ あんこもん（ID 74）で【対策】を続けて読み上げる
 // --------------------------------------------------
-let isVoiceSequenceRunning = false;
+let isVoiceSequenceRunning = false; // 読み上げ中は true（ボタンの連打で二重に再生しないため）
 
+// index.html のボタンの onclick="speakAll('btn-voice')" から呼ばれる
+//   画面に表示中の AI コメントを読む（サーバーに新しく作らせるわけではない）
 async function speakAll(buttonId) {
     if (isVoiceSequenceRunning) return; // 連打防止
     const textElement = document.getElementById('ai-analysis-text');
@@ -627,46 +634,13 @@ async function speakAll(buttonId) {
     }
 }
 
-// 【仕様変更 2026-11-16】2ボタン用の関数。speakAll() に統一
-// async function speakPart(partType, speakerId, buttonId) {
-//     const textElement = document.getElementById('ai-analysis-text');
-//     const button = document.getElementById(buttonId);
-//     if (!textElement || !button) return;
-//
-//     const fullText = textElement.innerText;
-//     if (!fullText || fullText.includes('読み込んでいます')) {
-//         alert('読み上げるテキストがありません');
-//         return;
-//     }
-//
-//     let targetText = '';
-//     if (partType === 'status') {
-//         const match = fullText.match(/【状況】([\s\S]*?)(?=【対策】|$)/);
-//         targetText = match ? match[1].trim() : fullText;
-//     } else if (partType === 'action') {
-//         const match = fullText.match(/【対策】([\s\S]*?)$/);
-//         targetText = match ? match[1].trim() : fullText;
-//     }
-//
-//     if (!targetText) {
-//         alert('該当するテキストが見つかりませんでした');
-//         return;
-//     }
-//
-//     try {
-//         await speakPromise(targetText, speakerId, buttonId);
-//     } catch (err) {
-//         console.error('音声再生エラー:', err);
-//         alert('音声再生に失敗しました。');
-//     }
-// }
-
 // --------------------------------------------------
 // ⑩ 直近のセンサーログ 折りたたみ
 // --------------------------------------------------
 const logsToggle = document.getElementById('logs-toggle');
 const logsBody = document.getElementById('recent-logs');
 
+// 開いていれば閉じ、閉じていれば開く（is-collapsed クラスの付け外し。見た目は style.css）
 function toggleRecentLogs() {
     if (!logsToggle || !logsBody) return;
     const willOpen = logsBody.classList.contains('is-collapsed');
@@ -675,6 +649,7 @@ function toggleRecentLogs() {
     logsToggle.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
 }
 
+// クリックと、キーボード操作（Enter / スペース）の両方で開閉できるようにする
 if (logsToggle) {
     logsToggle.addEventListener('click', toggleRecentLogs);
     logsToggle.addEventListener('keydown', (e) => {
@@ -688,8 +663,9 @@ if (logsToggle) {
 // --------------------------------------------------
 // ⚙️ データ収集間隔（ダッシュボード更新頻度・AIキャッシュと共通の値）
 // --------------------------------------------------
-let dashboardPollIntervalId = null;
+let dashboardPollIntervalId = null; // いま動いている定期更新タイマーの ID
 
+// 画面の定期更新を（前のタイマーを止めてから）intervalSeconds 秒ごとに設定し直す
 function startDashboardPolling(intervalSeconds) {
     if (dashboardPollIntervalId) {
         clearInterval(dashboardPollIntervalId);
@@ -703,12 +679,14 @@ const intervalInputEl = document.getElementById('interval-input');
 const intervalSaveBtn = document.getElementById('interval-save-btn');
 const intervalStatusEl = document.getElementById('interval-status');
 
+// 間隔の値を画面（表示・入力欄）と、オフライン判定用の変数に反映する
 function applyIntervalToUI(intervalSeconds) {
     if (intervalValueEl) intervalValueEl.textContent = intervalSeconds;
     if (intervalInputEl) intervalInputEl.value = intervalSeconds;
     sensorIntervalSeconds = intervalSeconds; // オフライン判定のしきい値もこれに連動
 }
 
+// サーバーから今の間隔を取得する（失敗したら 5 秒として扱う）
 function fetchSensorInterval() {
     return fetch('/api/settings/interval')
         .then((res) => res.json())
@@ -722,6 +700,8 @@ function fetchSensorInterval() {
         });
 }
 
+// 「保存」ボタン: 入力チェック（5〜3600秒）→ サーバーに保存 → 結果を表示
+//   ラズパイは次の送信のときにこの値を読みに来るので、反映は「次回の送信から」
 if (intervalSaveBtn) {
     intervalSaveBtn.addEventListener('click', () => {
         const value = parseInt(intervalInputEl.value, 10);
@@ -771,7 +751,9 @@ const appTaglineEl = document.getElementById('app-tagline');
 
 // ヘッダー左上のアイコン（トマト/ダイコン）を品目に合わせて切り替える
 const headerIconEl = document.getElementById('header-mascot-icon');
+// トマトのアイコンは index.html に最初から書いてある SVG をそのまま覚えておく
 const HEADER_ICON_TOMATO = headerIconEl ? headerIconEl.innerHTML : '';
+// ダイコンのアイコンは、マスコットの「healthy」と同じ絵
 const HEADER_ICON_DAIKON = `${DAIKON_BODY}
     ${daikonLeaves(0)}
     <circle cx="48" cy="68" r="5" fill="#2a2016"/>
@@ -793,12 +775,15 @@ function applyHeaderIconForCrop(crop) {
     }
 }
 
+// 品目に合わせてヘッダー（アイコン・サブタイトル）を切り替える
+//   ※ サブタイトルの文字は現在どちらの品目でも「観察ダッシュボード」
 function applyTaglineForCrop(crop) {
     applyHeaderIconForCrop(crop);
     if (!appTaglineEl) return;
     appTaglineEl.textContent = '観察ダッシュボード';
 }
 
+// ドロップダウンを準備し、品目が切り替わったらヘッダー・データ・マスコットを描き直す
 if (window.CropSwitcher) {
     window.CropSwitcher.initViewSwitcher(cropViewSelect, (newCrop) => {
         applyTaglineForCrop(newCrop);
@@ -809,80 +794,9 @@ if (window.CropSwitcher) {
     });
 }
 
-// 【仕様変更 2026-11-16】現在の栽培品目の切替を廃止（書き込み先はダイコン固定）
-// const currentCropSelect = document.getElementById('current-crop-select');
-// const currentCropSaveBtn = document.getElementById('current-crop-save-btn');
-// const currentCropStatusEl = document.getElementById('current-crop-status');
-//
-// function renderCurrentCropOptions(selected) {
-//     if (!currentCropSelect || !window.CropSwitcher) return;
-//     currentCropSelect.innerHTML = '';
-//     Object.keys(window.CropSwitcher.LABELS).forEach((crop) => {
-//         const opt = document.createElement('option');
-//         opt.value = crop;
-//         opt.textContent = window.CropSwitcher.LABELS[crop];
-//         if (crop === selected) opt.selected = true;
-//         currentCropSelect.appendChild(opt);
-//     });
-//     window.CropSwitcher.applyIcon(currentCropSelect);
-// }
-//
-// function fetchCurrentCrop() {
-//     return fetch('/api/crop/current')
-//         .then((res) => res.json())
-//         .then((data) => {
-//             renderCurrentCropOptions(data.crop);
-//             return data.crop;
-//         })
-//         .catch((err) => {
-//             console.error('現在の栽培品目取得エラー:', err);
-//             renderCurrentCropOptions('tomato');
-//         });
-// }
-//
-// if (currentCropSaveBtn) {
-//     currentCropSaveBtn.addEventListener('click', () => {
-//         const crop = currentCropSelect.value;
-//         currentCropSaveBtn.disabled = true;
-//         fetch('/api/crop/current', {
-//             method: 'POST',
-//             headers: { 'Content-Type': 'application/json' },
-//             body: JSON.stringify({ crop }),
-//         })
-//             .then((res) => res.json().then((data) => ({ ok: res.ok, data })))
-//             .then(({ ok, data }) => {
-//                 if (ok) {
-//                     currentCropStatusEl.innerText = `切り替えました: ${data.label}`;
-//                     currentCropStatusEl.style.color = '#2e7d32';
-//                 } else {
-//                     currentCropStatusEl.innerText = `エラー:\n${data.message || '切替に失敗しました。'}`;
-//                     currentCropStatusEl.style.color = '#ff6b6b';
-//                 }
-//             })
-//             .catch((err) => {
-//                 console.error('現在の栽培品目切替エラー:', err);
-//                 currentCropStatusEl.innerText = '通信エラーが発生しました。';
-//                 currentCropStatusEl.style.color = '#ff6b6b';
-//             })
-//             .finally(() => {
-//                 currentCropSaveBtn.disabled = false;
-//             });
-//     });
-// }
-//
-// // 他端末で切り替えられた場合もリアルタイムで反映
-// socket.on('current_crop_updated', (data) => {
-//     renderCurrentCropOptions(data.crop);
-// });
-
-// 【仕様変更 2026-11-16】基準データ（気象庁の平年値）を廃止
-// socket.on('reference_location_updated', () => {
-//     if (window.Reference) window.Reference.refreshLocation();
-//     fetchDashboardData();
-// });
-//
-// fetchCurrentCrop();
-
+// --------------------------------------------------
+// 🚀 ページを開いたときに1回だけ実行する処理
+// --------------------------------------------------
 // 起動時実行: 最新データを1回取得 → 現在の間隔設定を取得 → その間隔でポーリング開始
 fetchDashboardData();
 fetchSensorInterval().then((intervalSeconds) => {

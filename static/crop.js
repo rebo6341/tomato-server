@@ -5,9 +5,19 @@
 //    ・書き込み先の品目はサーバー側で管理する
 //      【仕様変更 2026-11-16】切替は廃止し、ダイコンに固定（/api/crop/current は daikon を返す）
 //    表示切替は書き込み先には影響しない。
+//
+//    【公開するもの】window.CropSwitcher（どの画面の JS からも使える）
+//      LABELS            : 品目 → 表示名
+//      getViewCrop()     : いま表示中の品目（'tomato' / 'daikon'）
+//      setViewCrop(crop) : 表示中の品目を保存する
+//      withCrop(url, crop)          : URL に ?crop= を付ける
+//      initViewSwitcher(select, fn) : ドロップダウンを準備し、切り替えたら fn(新しい品目) を呼ぶ
+//      applyIcon(select)            : ドロップダウン左側の品目アイコンを更新する
+//    使っている画面: index / history / detail / games（それぞれの JS より先に読み込む）
 // --------------------------------------------------
 (function () {
-  const STORAGE_KEY = 'yokusodateru_view_crop';
+  // （全体を (function () { ... })(); で囲んで、中の変数が他のファイルとぶつからないようにしている）
+  const STORAGE_KEY = 'yokusodateru_view_crop'; // localStorage に保存するときの名前
   // 初期値・取得失敗時に使う品目（書き込み先と同じダイコン）
   const DEFAULT_CROP = 'daikon';
 
@@ -16,6 +26,7 @@
     daikon: 'ダイコン',
   };
 
+  // 保存されている表示中の品目を読む（無い・変な値なら null）
   function getStoredViewCrop() {
     try {
       const v = localStorage.getItem(STORAGE_KEY);
@@ -25,6 +36,7 @@
     }
   }
 
+  // 表示中の品目を保存する（次にページを開いたときも同じ品目で表示するため）
   function setStoredViewCrop(crop) {
     try {
       localStorage.setItem(STORAGE_KEY, crop);
@@ -73,6 +85,7 @@
 
     const stored = getStoredViewCrop();
 
+    // 選択肢を描いて、切り替えたときの処理を登録する
     const applyCrop = (crop) => {
       renderOptions(selectEl, crop);
       selectEl.addEventListener('change', () => {
@@ -83,10 +96,12 @@
       return crop;
     };
 
+    // 保存済みならそれを使う
     if (stored) {
       return Promise.resolve(applyCrop(stored));
     }
 
+    // 初めて開いたときはサーバーに聞く（失敗したらダイコン）
     return fetch('/api/crop/current')
       .then((res) => res.json())
       .then((data) => {
@@ -97,6 +112,7 @@
       .catch(() => applyCrop(DEFAULT_CROP));
   }
 
+  // 他の JS から使えるように公開する
   window.CropSwitcher = {
     LABELS: CROP_LABELS,
     getViewCrop: () => getStoredViewCrop() || DEFAULT_CROP,
@@ -114,6 +130,7 @@
       new MutationObserver(() => applyIcon(sel)).observe(sel, { childList: true });
     });
   }
+  // HTML の読み込みがまだ途中なら、終わってから watchSelects を実行する
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', watchSelects);
   } else {

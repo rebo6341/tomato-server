@@ -13,6 +13,19 @@
        土壌湿度: 平年値は存在しない。適正範囲のみで判定する。
 
 平年値データは tools/build_normals.py で気象庁のZIPから作る（reference_data/ 以下）。
+
+【現在の使われ方（2026-11-16 の仕様変更後）】
+  app.py から使われているのは「1. 作物ごとの適正範囲」だけ。
+    ・mascot_thresholds() … マスコットの表情を決める基準（app.py §6）
+    ・build_state()       … 数値カードの色と「適正 20〜25℃｜高め」などの表示（/api/reference/state）
+    ・full_config()       … 適正範囲と出典の一覧（/api/reference/config）
+  「2. 平年値との差」と「土壌湿度の校正」は廃止したため、app.py は常に None を渡している。
+  関連する関数（load_stations / load_normals / expected_* など）は呼ばれても
+  None を返すだけで、画面には影響しない。再開する場合に備えて残している。
+
+【このファイルの並び】
+  定数（昼夜の境目・pF 値・暫定範囲）→ CROP_REFERENCE（作物ごとの数値と出典）
+  → 適正範囲の計算・判定 → 平年値データの読み込み（現在は不使用）→ build_state（まとめ）
 """
 
 import gzip
@@ -24,6 +37,7 @@ import threading
 from datetime import datetime
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+# 平年値データの置き場所（環境変数 REFERENCE_DATA_DIR で変更可能。現在は不使用）
 REFERENCE_DIR = os.environ.get('REFERENCE_DATA_DIR', os.path.join(BASE_DIR, 'reference_data'))
 
 # 昼夜の境目（この範囲 [開始, 終了) を「昼」とする）
@@ -47,6 +61,13 @@ MIN_SD_HUMIDITY = 2.0
 # --------------------------------------------------
 # 作物ごとの適正範囲
 #   low / high が None の側は「その側は判定しない」（出典が確認できていない）
+#
+#   構造: CROP_REFERENCE[作物][指標]
+#     temperature / humidity : ranges（period='day' 昼 / 'night' 夜 / 'all' 終日）＋ 出典 ＋ 注記
+#     soil                   : pf（文献の pF 範囲）＋ 出典 ＋ 注記
+#                              ※ 校正を廃止したので、実際の判定は PROVISIONAL_SOIL_RANGE(20〜70%) を使う
+#     None                   : その指標の基準は未設定（判定しない）
+#   数値を変えるとマスコットの表情・数値の色・判定表示がすべて変わるので注意。
 # --------------------------------------------------
 CROP_REFERENCE = {
     'tomato': {
@@ -113,24 +134,27 @@ CROP_REFERENCE = {
     },
 }
 
-VALID_CROPS = tuple(CROP_REFERENCE.keys())
-METRICS = ('temperature', 'humidity', 'soil')
+VALID_CROPS = tuple(CROP_REFERENCE.keys())       # ('tomato', 'daikon')
+METRICS = ('temperature', 'humidity', 'soil')    # 判定する指標
 
 
 # --------------------------------------------------
 # 適正範囲
 # --------------------------------------------------
 def _is_day(hour):
+    """hour（0〜23）が「昼」（6時以上18時未満）か"""
     return DAY_START_HOUR <= hour < DAY_END_HOUR
 
 
 def _period_matches(period, hour):
+    """範囲の period（'all' / 'day' / 'night'）が、いまの時刻 hour に当てはまるか"""
     if period == 'all':
         return True
     return _is_day(hour) if period == 'day' else (not _is_day(hour))
 
 
 def _round1(x):
+    """小数1桁に丸める（None はそのまま）"""
     return None if x is None else round(float(x), 1)
 
 
@@ -152,7 +176,10 @@ def pf_to_percent(pf, wet_pct, dry_pct):
 
 
 def soil_range(crop, calibration=None):
-    """土壌湿度の適正範囲（%）を返す。校正済みならpF範囲から換算、未校正なら暫定値。"""
+    """土壌湿度の適正範囲（%）を返す。校正済みならpF範囲から換算、未校正なら暫定値。
+
+    ※ 校正は廃止したため、現在は常に「暫定の範囲（20〜70%）」が返る。
+    """
     cfg = CROP_REFERENCE[crop]['soil']
     if calibration_is_valid(calibration):
         pf_wet_side, pf_dry_side = cfg['pf']  # 小さい方が湿っている
@@ -179,7 +206,11 @@ def soil_range(crop, calibration=None):
 
 
 def metric_range(crop, metric, now=None, calibration=None):
-    """指定の指標の、いま（now の時刻）に適用する適正範囲を返す。未設定なら None。"""
+    """指定の指標の、いま（now の時刻）に適用する適正範囲を返す。未設定なら None。
+
+    例: ミニトマトの気温・昼 → {'low': 20.0, 'high': 25.0, 'unit': '℃', 'label': '昼（6〜18時）', ...}
+    知らない作物名が来たらミニトマトとして扱う。
+    """
     if crop not in CROP_REFERENCE:
         crop = 'tomato'
     now = now or datetime.now()
@@ -204,7 +235,7 @@ def metric_range(crop, metric, now=None, calibration=None):
 
 
 def judge(value, rng):
-    """'ok' / 'low' / 'high' / 'unset' を返す"""
+    """値を適正範囲と比べて 'ok'（範囲内）/ 'low'（低い）/ 'high'（高い）/ 'unset'（判定できない）を返す"""
     if value is None or rng is None:
         return 'unset'
     low, high = rng.get('low'), rng.get('high')
@@ -218,7 +249,11 @@ def judge(value, rng):
 
 
 def mascot_thresholds(crop, now=None, calibration=None):
-    """マスコット表情の判定用に、各指標の low/high を返す（None の側は判定しない）"""
+    """マスコット表情の判定用に、各指標の low/high を返す（None の側は判定しない）
+
+    戻り値の例: {'soil_low': 20.0, 'soil_high': 70.0, 'temp_low': 20.0, 'temp_high': 25.0,
+                 'humi_low': 60.0, 'humi_high': 80.0}
+    """
     out = {}
     for metric, prefix in (('soil', 'soil'), ('temperature', 'temp'), ('humidity', 'humi')):
         rng = metric_range(crop, metric, now, calibration)
@@ -246,14 +281,17 @@ def full_config(crop, calibration=None):
 
 # --------------------------------------------------
 # 気象庁の平年値データ（tools/build_normals.py が作る reference_data/）
+#   ※ 2026-11-16 の仕様変更で不使用（app.py は location_key に None を渡す）。
+#     ここから下の build_state() より前の関数は、再開に備えて残しているだけ。
 # --------------------------------------------------
-_KEY_RE = re.compile(r'^(amd|sfc)_\d{5}$')
-_cache_lock = threading.Lock()
-_stations_cache = {'mtime': None, 'data': None}
-_normals_cache = {}
+_KEY_RE = re.compile(r'^(amd|sfc)_\d{5}$')       # 地点キーの形式: amd_12345 / sfc_12345
+_cache_lock = threading.Lock()                     # 複数スレッドからの同時読み込み対策
+_stations_cache = {'mtime': None, 'data': None}    # stations.json の読み込み結果（更新日時つき）
+_normals_cache = {}                                # 地点キー → (更新日時, 平年値データ)
 
 
 def is_valid_key(key):
+    """地点キーが正しい形式か（ファイルパスに使うので、変な文字列を弾く）"""
     return bool(key) and bool(_KEY_RE.match(key))
 
 
@@ -278,6 +316,7 @@ def load_stations():
 
 
 def get_station(key):
+    """地点キーから地点情報を返す（無ければ None）"""
     data = load_stations()
     if not data or not is_valid_key(key):
         return None
@@ -310,6 +349,7 @@ def load_normals(key):
 
 
 def normals_ready(key):
+    """その地点の平年値ファイルが読めるか"""
     return load_normals(key) is not None
 
 
@@ -324,6 +364,7 @@ def humidity_source_key(station):
 
 
 def default_station_key():
+    """stations.json に書かれた初期地点のキー"""
     data = load_stations()
     return data.get('defaultKey') if data else None
 
@@ -420,6 +461,7 @@ def expected_humidity(normals, dt):
 
 
 def _normal_block(value, expected, sd, min_sd, basis):
+    """平年値との差（diff）と、ばらつきで割った z 値をまとめた辞書を作る"""
     if value is None or expected is None:
         return None
     diff = value - expected
@@ -438,6 +480,13 @@ def build_state(crop, latest, humidity_24h, now, calibration, location_key):
 
     latest        : {'temperature','humidity','soil_moisture','timestamp'} または None
     humidity_24h  : {'mean': 24時間平均(%), 'hours': 実データがカバーする時間数} または None
+
+    ※ 現在 app.py は humidity_24h / calibration / location_key をすべて None で呼ぶので、
+      平年値の部分は飛ばされ、各指標の normal は None・normalStatus は 'none' になる。
+
+    戻り値の metrics[指標] の中身:
+      value（最新値）/ range（適正範囲）/ judge（'ok'・'low'・'high'・'unset'）
+      normal / normalStatus（平年値関連。現在は常に None / 'none'）
     """
     if crop not in CROP_REFERENCE:
         crop = 'tomato'

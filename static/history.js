@@ -1,14 +1,21 @@
 // history.html 専用処理（ページング方式）
+// ==================================================
+// 【この画面でやること】センサーデータの全履歴を表で見る
+//   ・最初に20件表示し、「さらに20件読み込む」ボタンで下に追加していく
+//   ・/api/data/page?limit=20&offset=(すでに表示した件数) で1ページずつ取得
+//   ・品目のドロップダウンを切り替えたら、最初から読み直す
+// ==================================================
 
-const PAGE_SIZE = 20;
-let currentOffset = 0;
-let totalCount = 0;
+const PAGE_SIZE = 20;   // 1回に読み込む件数
+let currentOffset = 0;  // すでに表示した件数（次に読み込む位置）
+let totalCount = 0;     // 全件数（サーバーが教えてくれる）
 let dbName = 'local_sensor.db'; // サーバーから取得できなかった時の予備
 
 const tbody = document.getElementById('history-tbody');
 const btn = document.getElementById('load-more-btn');
 const dbInfoEl = document.getElementById('db-info');
 
+// 表の行を描く。append=true なら下に追加、false なら中身を入れ替える
 function renderRows(rows, { append }) {
     let html = '';
     rows.forEach((row) => {
@@ -35,6 +42,7 @@ function updateDbInfo() {
     dbInfoEl.textContent = `散水DB: ${dbName}\n全 ${totalCount} 件中 ${currentOffset} 件表示中`;
 }
 
+// 件数表示と「さらに読み込む」ボタンの文字・押せるかどうかを更新する
 function updateButtonState() {
     updateDbInfo();
 
@@ -47,6 +55,7 @@ function updateButtonState() {
     }
 }
 
+// 次の20件を取得して表示する（失敗したらボタンを「再試行」にする）
 function fetchNextPage() {
     btn.disabled = true;
     btn.textContent = '読み込み中...';
@@ -85,6 +94,7 @@ function fetchNextPage() {
         });
 }
 
+// 表を空にして最初の20件から読み直す（品目を切り替えたとき）
 function resetAndReload() {
     currentOffset = 0;
     totalCount = 0;

@@ -1,6 +1,12 @@
-Flask
-Flask-SocketIO
-python-dotenv
-groq
-requests
-opencv-python-headless
+# ==================================================
+# 自宅 Linux サーバー（app.py）に必要な Python ライブラリ
+#   インストール: ./venv/bin/pip install -r requirements.txt
+#   ※ gunicorn（本番起動に使う）はこの一覧に入っていないので、別途インストールされている前提。
+#   ※ ラズパイ側のプログラム（raspberry-pi/ フォルダ）に必要なものは、そちらの README を参照。
+# ==================================================
+Flask                    # Web サーバー本体（画面と API）
+Flask-SocketIO           # ブラウザへのリアルタイム通知（Socket.IO）
+python-dotenv            # .env ファイルから設定を読み込む
+groq                     # AI コメントを作る Groq API
+requests                 # ラズパイ・VOICEVOX との HTTP 通信
+opencv-python-headless   # 画像処理（app.py では使っていない。cam_server.py 用の名残）
